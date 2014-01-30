@@ -1,11 +1,15 @@
-shinken (1.4-3) unstable; urgency=low
+shinken (2.0~git20140129-1) UNRELEASED; urgency=medium
 
+  [ Thibault Cohen ]
   * Delete useless debconf files. Closes: #736395
   * Delete sourceless flash file. Closes: #736789
   * Add source for sourceless file. Closes: #736784
   * Add a new uploader
 
- -- Thibault Cohen <thibault.cohen@savoirfairelinux.com>  Tue, 28 Jan 2014 18:30:59 -0500
+  [ Mathieu Parent ]
+  * New upstream major version
+
+ -- Mathieu Parent <sathieu@debian.org>  Thu, 30 Jan 2014 11:07:16 +0100
 
 shinken (1.4-2) unstable; urgency=low
 
