@@ -27,7 +27,7 @@ from shinken_test import *
 
 class TestReactionnerTagGetNotifs(ShinkenTest):
     def setUp(self):
-        self.setup_with_file('etc/nagios_reactionner_tag_get_notif.cfg')
+        self.setup_with_file('etc/shinken_reactionner_tag_get_notif.cfg')
 
     # For a service, we generate a notification and a event handler.
     # Each one got a specific reactionner_tag that we will look for.
@@ -76,6 +76,7 @@ class TestReactionnerTagGetNotifs(ShinkenTest):
         for c in taggued_eventtag_checks:
             # Should be the host one only
             self.assert_(c.command.startswith('plugins/test_eventhandler.pl'))
+
 
     # Same that upper, but with modules types
     def test_good_checks_get_only_tags_with_specific_tags_andmodule_types(self):

@@ -34,7 +34,7 @@ try:
     from hashlib import md5
 except ImportError:
     from md5 import md5
-    
+
 from copy import copy
 
 from shinken.graph import Graph
@@ -89,7 +89,11 @@ class Item(object):
         # [0] = +  -> new key-plus
         # [0] = _  -> new custom entry in UPPER case
         for key in params:
-            if len(params[key]) >= 1 and params[key][0] == '+':
+            # delistify attributes if there is only one value
+            params[key] = self.compact_unique_attr_value(params[key])
+            # checks for attribute value special syntax (+ or _)
+            if not isinstance(params[key], list) and \
+               len(params[key]) >= 1 and params[key][0] == '+':
                 # Special case: a _MACRO can be a plus. so add to plus
                 # but upper the key for the macro name
                 if key[0] == "_":
@@ -97,10 +101,28 @@ class Item(object):
                 else:
                     self.plus[key] = params[key][1:]  # we remove the +
             elif key[0] == "_":
+                if isinstance(params[key], list):
+                    err = "no support for _ syntax in multiple valued attributes"
+                    self.configuration_errors.append(err)
+                    continue
                 custom_name = key.upper()
                 self.customs[custom_name] = params[key]
             else:
                 setattr(self, key, params[key])
+
+
+    # When values to set on attributes are unique (single element list),
+    # return the value directly rather than setting list element.
+    def compact_unique_attr_value(self, val):
+        if isinstance(val, list):
+            if len(val) > 1:
+                return val
+            elif len(val) == 0:
+                return ''
+            else:
+                return val[0]
+        else:
+            return val
 
     def init_running_properties(self):
         for prop, entry in self.__class__.running_properties.items():
@@ -213,14 +235,17 @@ Like temporary attributes such as "imported_from", etc.. """
 
     def get_templates(self):
         if hasattr(self, 'use') and self.use != '':
-            return self.use.split(',')
+            if isinstance(self.use, list):
+                return self.use
+            else:
+                return self.use.split(',')
         else:
             return []
 
 
     # We fillfull properties with template ones if need
     def get_property_by_inheritance(self, items, prop):
-        
+
         # If I have the prop, I take mine but I check if I must
         # add a plus property
         if hasattr(self, prop):
@@ -248,7 +273,7 @@ Like temporary attributes such as "imported_from", etc.. """
             if value is not None:
                 # If our template give us a '+' value, we should continue to loop
                 still_loop = False
-                if value.startswith('+'):
+                if not isinstance(value, list) and value.startswith('+'):
                     # Templates should keep their + inherited from their parents
                     if not self.is_tpl():
                         value = value[1:]
@@ -257,7 +282,7 @@ Like temporary attributes such as "imported_from", etc.. """
                 # Maybe in the previous loop, we set a value, use it too
                 if hasattr(self, prop):
                     # If the current value is strong, it will simplify the problem
-                    if value.startswith('+'):
+                    if not isinstance(value, list) and value.startswith('+'):
                         # In this case we can remove the + from our current
                         # tpl because our value will be final
                         value = ','.join([getattr(self, prop), value[1:]])
@@ -395,7 +420,7 @@ Like temporary attributes such as "imported_from", etc.. """
         # Register is not by default in the properties
         if not 'register' in properties:
             properties.append('register')
-            
+
         for prop in properties:
             if hasattr(self, prop):
                 v = getattr(self, prop)
@@ -690,6 +715,22 @@ class Items(object):
         else:
             return None
 
+    # Search items using a list of filter callbacks. Each callback is passed
+    # the item instances and should return a boolean value indicating if it
+    # matched the filter.
+    # Returns a list of items matching all filters.
+    def find_by_filter(self, filters):
+        items = []
+        for i in self:
+            failed = False
+            for f in filters:
+                if not f(i):
+                    failed = True
+                    break
+            if failed is False:
+                items.append(i)
+        return items
+
     # prepare_for_conf_sending to flatten some properties
     def prepare_for_sending(self):
         for i in self:
@@ -760,9 +801,8 @@ class Items(object):
             # Ok, look at no twins (it's bad!)
             for id in twins:
                 i = self.items[id]
-                logger.error("[items] %s.%s is duplicated from %s" %\
+                logger.warning("[items] %s.%s is duplicated from %s" %\
                     (i.__class__.my_type, i.get_name(), getattr(i, 'imported_from', "unknown source")))
-                r = False
 
         # Then look if we have some errors in the conf
         # Juts print warnings, but raise errors
@@ -909,7 +949,7 @@ class Items(object):
                         new_resultmodulations.append(rm)
                     else:
                         err = "the result modulation '%s' defined on the %s '%s' do not exist" % (rm_name, i.__class__.my_type, i.get_name())
-                        i.configuration_errors.append(err)
+                        i.configuration_warnings.append(err)
                         continue
                 i.resultmodulations = new_resultmodulations
 
@@ -936,7 +976,10 @@ class Items(object):
     def explode_contact_groups_into_contacts(self, contactgroups):
         for i in self:
             if hasattr(i, 'contact_groups'):
-                cgnames = i.contact_groups.split(',')
+                if isinstance(i.contact_groups, list):
+                    cgnames = i.contact_groups
+                else:
+                    cgnames = i.contact_groups.split(',')
                 cgnames = strip_and_uniq(cgnames)
                 for cgname in cgnames:
                     cg = contactgroups.find_by_name(cgname)
@@ -972,20 +1015,26 @@ class Items(object):
                 # Got a real one, just set it :)
                 setattr(i, prop, tp)
 
+    def create_commandcall(self,prop, commands, command):
+        comandcall = dict(commands=commands, call=command)
+        if hasattr(prop, 'enable_environment_macros'):
+            comandcall['enable_environment_macros'] = prop.enable_environment_macros
+
+        if hasattr(prop, 'poller_tag'):
+            comandcall['poller_tag']=prop.poller_tag
+        elif hasattr(prop, 'reactionner_tag'):
+            comandcall['reactionner_tag']=prop.reactionner_tag
+
+        return CommandCall(**comandcall)
+
     # Link one command property
     def linkify_one_command_with_commands(self, commands, prop):
         for i in self:
             if hasattr(i, prop):
                 command = getattr(i, prop).strip()
                 if command != '':
-                    if hasattr(i, 'poller_tag'):
-                        cmdCall = CommandCall(commands, command,
-                                              poller_tag=i.poller_tag)
-                    elif hasattr(i, 'reactionner_tag'):
-                        cmdCall = CommandCall(commands, command,
-                                              reactionner_tag=i.reactionner_tag)
-                    else:
-                        cmdCall = CommandCall(commands, command)
+                    cmdCall = self.create_commandcall(i, commands, command)
+
                     # TODO: catch None?
                     setattr(i, prop, cmdCall)
                 else:
@@ -1001,14 +1050,7 @@ class Items(object):
                 com_list = []
                 for com in coms:
                     if com != '':
-                        if hasattr(i, 'poller_tag'):
-                            cmdCall = CommandCall(commands, com,
-                                                  poller_tag=i.poller_tag)
-                        elif hasattr(i, 'reactionner_tag'):
-                            cmdCall = CommandCall(commands, com,
-                                                  reactionner_tag=i.reactionner_tag)
-                        else:
-                            cmdCall = CommandCall(commands, com)
+                        cmdCall = self.create_commandcall(i, commands, com)
                         # TODO: catch None?
                         com_list.append(cmdCall)
                     else:  # TODO: catch?
@@ -1056,6 +1098,25 @@ class Items(object):
             # Get the list, but first make elements uniq
             i.macromodulations = new_macromodulations
 
+
+    # Linkify with modules
+    def linkify_s_by_plug(self, modules):
+        for s in self:
+            new_modules = []
+            for plug_name in s.modules:
+                plug_name = plug_name.strip()
+                # don't tread void names
+                if plug_name == '':
+                    continue
+
+                plug = modules.find_by_name(plug_name)
+                print plug
+                if plug is not None:
+                    new_modules.append(plug)
+                else:
+                    err = "Error: the module %s is unknown for %s" % (plug_name, s.get_name())
+                    s.configuration_errors.append(err)
+            s.modules = new_modules
 
 
     def evaluate_hostgroup_expression(self, expr, hosts, hostgroups, look_in='hostgroups'):

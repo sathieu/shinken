@@ -68,6 +68,10 @@ class Log:
 
     def __init__(self):
         self._level = logging.NOTSET
+        self.display_time = True
+        self.display_level = True
+        self.log_colors = {Log.WARNING:'yellow', Log.CRITICAL:'magenta', Log.ERROR:'red'}
+
 
     def load_obj(self, object, name_=None):
         """ We load the object where we will put log broks
@@ -103,6 +107,13 @@ class Log:
         self._level = level
         logging.getLogger().setLevel(level)
 
+
+    def set_display_time(self, b):
+        self.display_time = b
+
+    def set_display_level(self, b):
+        self.display_level = b
+
     def debug(self, msg, *args, **kwargs):
         self._log(logging.DEBUG, msg, *args, **kwargs)
 
@@ -134,6 +145,9 @@ class Log:
         if level < self._level:
             return
 
+        # display the level only if we ask locally and globaly
+        display_level = display_level & self.display_level
+
         # We format the log in UTF-8
         if isinstance(message, str):
             message = message.decode('UTF-8', 'replace')
@@ -142,9 +156,15 @@ class Log:
             lvlname = logging.getLevelName(level)
 
             if display_level:
-                fmt = u'[%(date)s] %(level)-9s %(name)s%(msg)s\n'
+                if self.display_time:
+                    fmt = u'[%(date)s] %(level)-9s %(name)s%(msg)s\n'
+                else:
+                    fmt = u'%(level)-9s %(name)s%(msg)s\n'
             else:
-                fmt = u'[%(date)s] %(name)s%(msg)s\n'
+                if self.display_time:
+                    fmt = u'[%(date)s] %(name)s%(msg)s\n'
+                else:
+                    fmt = u'%(name)s%(msg)s\n'
 
             args = {
                 'date': (human_timestamp_log and time.asctime()
@@ -160,7 +180,7 @@ class Log:
         if print_it and len(s) > 1:            
             # Take a color so we can print if it's a TTY
             if is_tty():
-                color = {Log.WARNING:'yellow', Log.CRITICAL:'magenta', Log.ERROR:'red'}.get(level, None)
+                color = self.log_colors.get(level, None)
             else:
                 color = None
             
@@ -176,7 +196,7 @@ class Log:
         # We create the brok and load the log message
         # DEBUG level logs are logged by the daemon locally
         # and must not be forwarded to other satellites, or risk overloading them.
-        if level != logging.DEBUG:
+        if level != logging.DEBUG and obj and hasattr(obj, 'add'):
             b = Brok('log', {'log': s})
             obj.add(b)
 
@@ -251,6 +271,10 @@ class __ConsoleLogger:
         self._log(Log.ERROR, msg, *args, **kwargs)
 
     def critical(self, msg, *args, **kwargs):
+        self._log(Log.CRITICAL, msg, *args, **kwargs)
+
+    def alert(self, msg, *args, **kwargs):
+        kwargs.setdefault('display_level', False)
         self._log(Log.CRITICAL, msg, *args, **kwargs)
 
     def _log(self, *args, **kwargs):

@@ -72,7 +72,7 @@ function print_date {
 }
 
 function check_good_run {
-    VAR="$1"
+    VAR="$3"
     RUN="$2"
     LOG="$3"
 
@@ -103,27 +103,27 @@ function check_good_run {
 
     echo "Now checking for good file prensence"
     ls var
-    is_file_present $LOG/nagios.log
-    string_in_file "Waiting for initial configuration" $LOG/nagios.log
-#    string_in_file "First scheduling" $LOG/nagios.log
-    string_in_file "OK, all schedulers configurations are dispatched :)" $LOG/nagios.log
-    string_in_file "OK, no more reactionner sent need" $LOG/nagios.log
-    string_in_file "OK, no more poller sent need" $LOG/nagios.log
-    string_in_file "OK, no more broker sent need" $LOG/nagios.log
+    is_file_present $LOG/shinken.log
+    string_in_file "Waiting for initial configuration" $LOG/shinken.log
+#    string_in_file "First scheduling" $LOG/shinken.log
+    string_in_file "OK, all schedulers configurations are dispatched :)" $LOG/shinken.log
+    string_in_file "OK, no more reactionner sent need" $LOG/shinken.log
+    string_in_file "OK, no more poller sent need" $LOG/shinken.log
+    string_in_file "OK, no more broker sent need" $LOG/shinken.log
 }
 
 function localize_config {
     # change paths in config files (/usr/local/shinken/*) to
     # relative paths, so this test runs only in the current directory.
-    # takes nagios.cfg and shinken-specific.cfg
-    cp $1 /tmp/nagios.cfg.save
+    # takes shinken.cfg and shinken-specific.cfg
+    cp $1 /tmp/shinken.cfg.save
     cp $2 /tmp/shinken-specific.cfg.save
-    sed -e 's/\/usr\/local\/shinken\///g' < /tmp/nagios.cfg.save > $1
+    sed -e 's/\/usr\/local\/shinken\///g' < /tmp/shinken.cfg.save > $1
     sed -e 's/\/usr\/local\/shinken\/var\///g' < /tmp/shinken-specific.cfg.save > $2
 }
 
 function globalize_config {
-    mv /tmp/nagios.cfg.save $1
+    mv /tmp/shinken.cfg.save $1
     mv /tmp/shinken-specific.cfg.save $2
 }
 
@@ -151,18 +151,19 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg etc/shinken-specific.cfg
+localize_config etc/shinken.cfg etc/shinken-specific.cfg
 bin/launch_all_debug.sh
-globalize_config etc/nagios.cfg etc/shinken-specific.cfg
+globalize_config etc/shinken.cfg etc/shinken-specific.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 20
 
 #Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "First launch check OK"
 
@@ -209,9 +210,8 @@ echo "Real install OK"
 
 # Useful to take it from setup_parameter? It's just for coding here
 ETC=/etc/shinken
-is_file_present $ETC/nagios.cfg
-is_file_present $ETC/shinken-specific.cfg
-string_in_file "servicegroups.cfg" $ETC/nagios.cfg
+is_file_present $ETC/shinken.cfg
+string_in_file "servicegroups.cfg" $ETC/shinken.cfg
 is_file_present /usr/bin/shinken-arbiter
 
 ps -fu shinken
@@ -225,8 +225,8 @@ sudo /etc/init.d/shinken-broker -d start
 sudo /etc/init.d/shinken-receiver -d start
 sudo /etc/init.d/shinken-arbiter -d start
 
-echo "We will sleep again 5sec so every one is quite stable...."
-sleep 10
+echo "We will sleep again 15sec so every one is quite stable...."
+sleep 20
 check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
 
 sudo /etc/init.d/shinken-arbiter status
@@ -268,15 +268,15 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-ha-only.cfg
+localize_config test/etc/test_stack2/shinken.cfg test/etc/test_stack2/shinken-specific-ha-only.cfg
 test/bin/launch_all_debug2.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-ha-only.cfg
+globalize_config test/etc/test_stack2/shinken.cfg test/etc/test_stack2/shinken-specific-ha-only.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 30
 
 # The number of process changed, we mush look for it
 
@@ -295,95 +295,94 @@ NB_RECEIVERS=2
 NB_ARBITERS=6
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of HA daemons is OK"
 
 # Now we kill and see if all is OK :)
 # We clean the log file
-#> $VAR/nagios.log
+#> $VAR/shinken.log
 
 
 # We kill the most important thing first: the scheduler-Master
 bin/stop_scheduler.sh
 
 # We sleep to be sruethe scheduler see us
-sleep 15
+sleep 60
 NB_SCHEDULERS=2
 print_date
 
 
-# First we look is the arbiter saw the scheduler as dead
-string_in_file "Warning : Scheduler scheduler-Master had the configuration 0 but is dead, I am not happy." $VAR/nagios.log
 # Then we look if the scheduler-spare got a conf from arbiter (here, view from the arbiter)
-string_in_file "Dispatch OK of conf in scheduler scheduler-Spare" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Spare" $VAR/shinken.log
 
 # then is the broker know it and try to connect to the new scheduler-spare
-string_in_file "\[broker-Master\] Connection OK to the scheduler scheduler-Spare" $VAR/nagios.log
+string_in_file "\[broker-Master\] Connection OK to the scheduler scheduler-Spare" $VAR/shinken.log
 
 
 echo "Now stop the poller-Master"
 # Now we stop the poller. We will see the sapre take the job (we hope in fact :) )
 bin/stop_poller.sh
 # check_good_run var
-sleep 10
+sleep 60
 print_date
 
 # The master should be look dead
-string_in_file "Warning : \[All\] The poller poller-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The poller poller-Master seems to be down, I must re-dispatch its role to someone else." $VAR/shinken.log
 # The spare should got the conf
-string_in_file "\[All\] Dispatch OK of configuration 0 to poller poller-Slave" $VAR/nagios.log
+string_in_file "\[All\] Dispatch OK of configuration 0 to poller poller-Slave" $VAR/shinken.log
 # And he should got the scheduler link (the sapre one)
-string_in_file "\[poller-Slave\] Connection OK with scheduler scheduler-Spare" $VAR/nagios.log
+string_in_file "\[poller-Slave\] Connection OK with scheduler scheduler-Spare" $VAR/shinken.log
 #string_in_file "\[poller-Slave\] Connection OK with scheduler scheduler-Spare" $VAR/pollerd-2.log
 
 
 echo "Now stop the reactionner"
 bin/stop_reactionner.sh
 # check_good_run var
-sleep 10
+sleep 60
 print_date
 
 # The master should be look dead
-string_in_file "Warning : \[All\] The reactionner reactionner-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The reactionner reactionner-Master seems to be down, I must re-dispatch its role to someone else." $VAR/shinken.log
 # The spare should got the conf
-string_in_file "\[All\] Dispatch OK of configuration 0 to reactionner reactionner-Spare" $VAR/nagios.log
+string_in_file "\[All\] Dispatch OK of configuration 0 to reactionner reactionner-Spare" $VAR/shinken.log
 # And he should got the scheduler link (the sapre one)
-string_in_file "\[reactionner-Spare\] Connection OK with scheduler scheduler-Spare" $VAR/nagios.log
+string_in_file "\[reactionner-Spare\] Connection OK with scheduler scheduler-Spare" $VAR/shinken.log
 # string_in_file "\[reactionner-Spare\] Connection OK with scheduler scheduler-Spare" $VAR/reactionnerd-2.log
 
 
 echo "Now we stop... the Broker!"
 bin/stop_broker.sh
 # check_good_run var
-sleep 10
+sleep 60
 print_date
 
 # The master should be look dead
-string_in_file "Warning : \[All\] The broker broker-Master seems to be down, I must re-dispatch its role to someone else." $VAR/nagios.log
+string_in_file "Warning : \[All\] The broker broker-Master seems to be down, I must re-dispatch its role to someone else." $VAR/shinken.log
 # The spare should got the conf
-string_in_file "\[All\] Dispatch OK of configuration 0 to broker broker-Slave" $VAR/nagios.log
+string_in_file "\[All\] Dispatch OK of configuration 0 to broker broker-Slave" $VAR/shinken.log
 # And he should got the scheduler link (the spare one)
-string_in_file "\[broker-Slave\] Connection OK to the scheduler scheduler-Spare" $VAR/nagios.log
+string_in_file "\[broker-Slave\] Connection OK to the scheduler scheduler-Spare" $VAR/shinken.log
 # And to other satellites
-string_in_file "\[broker-Slave\] Connection OK to the reactionner reactionner-Spare" $VAR/nagios.log
-string_in_file "\[broker-Slave\] Connection problem to the poller poller-Master" $VAR/nagios.log
+string_in_file "\[broker-Slave\] Connection OK to the reactionner reactionner-Spare" $VAR/shinken.log
+string_in_file "\[broker-Slave\] Connection problem to the poller poller-Master" $VAR/shinken.log
 # And should have load the modules
-string_in_file "\[broker-Slave\] I correctly loaded the modules: \[Simple-log,Livestatus\]" $VAR/nagios.log
+string_in_file "\[broker-Slave\] I correctly loaded the modules: \[Simple-log,Livestatus\]" $VAR/shinken.log
 
 
 echo "Now we stop... the Arbiter!"
 # We clean the log first
-> $VAR/nagios.log
+> $VAR/shinken.log
 
 bin/stop_arbiter.sh
-sleep 30
+sleep 70
 
 echo "OK AND NOW?"
-string_in_file "Arbiter Master is dead. The arbiter Arbiter-spare take the lead"  $VAR/nagios.log
+string_in_file "Arbiter Master is dead. The arbiter Arbiter-spare take the lead"  $VAR/shinken.log
 
 # Look at satellite states
-string_in_file "Setting the satellite broker-Master to a dead state" $VAR/nagios.log
+string_in_file "Setting the satellite broker-Master to a dead state" $VAR/shinken.log
 
 echo "Now we clean it"
 ./clean.sh
@@ -397,15 +396,15 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-lb-only.cfg
+localize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-lb-only.cfg
 test/bin/launch_all_debug3.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-lb-only.cfg
+globalize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-lb-only.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 60
 
 # The number of process changed, we mush look for it
 
@@ -423,17 +422,18 @@ NB_RECEIVERS=2
 NB_ARBITERS=3
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
 
 # Now look if it's also good in the log file too
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
 
 # Now we will check what happened when we will an alive satellite, and if another active
 # one got configuration again and again (and so don't work...) or if its managed
@@ -443,9 +443,11 @@ POLLER1_PID=`ps -fu shinken | grep poller | grep -v test_stack2 | grep -v grep |
 kill $POLLER1_PID
 
 echo "sleep some few seconds to see the arbiter react"
-sleep 5
+sleep 20
+
+date +%s
 # And we look if the arbiter find that the other poller do not need another configuration send
-string_in_file "Skipping configuration 0 send to the poller poller-Master-2: it already got it" $VAR/nagios.log
+string_in_file "Skipping configuration 0 send to the poller poller-Master-2: it already got it" $VAR/shinken.log
 
 
 echo "Now we clean it"
@@ -463,15 +465,15 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-cbl.cfg
+localize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-bcl.cfg
 test/bin/launch_all_debug7.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-cbl.cfg
+globalize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-bcl.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 30
 
 # The number of process changed, we mush look for it
 
@@ -489,21 +491,22 @@ NB_RECEIVERS=2
 NB_ARBITERS=3
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
 
 # Now look if it's also good in the log file too
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "\[broker-Master-1\] Connection OK to the scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "\[broker-Master-2\] Connection OK to the scheduler scheduler-Master-1" $VAR/nagios2.log
-string_in_file "initial Broks for broker broker-Master-1" $VAR/nagios.log
-string_in_file "initial Broks for broker broker-Master-2" $VAR/nagios2.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "\[broker-Master-1\] Connection OK to the scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "\[broker-Master-2\] Connection OK to the scheduler scheduler-Master-1" $VAR/shinken2.log
+string_in_file "initial Broks for broker broker-Master-1" $VAR/shinken.log
+string_in_file "initial Broks for broker broker-Master-2" $VAR/shinken2.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
 
 echo "Now we clean it"
 ./clean.sh
@@ -520,15 +523,15 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-passive-poller.cfg
+localize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-passive-poller.cfg
 test/bin/launch_all_debug4.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-passive-poller.cfg
+globalize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-passive-poller.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 60
 
 # The number of process changed, we mush look for it
 
@@ -547,21 +550,22 @@ NB_RECEIVERS=2
 NB_ARBITERS=3
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
 
 # Now look if it's also good in the log file too
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
 # We should see the poller 2 say it is passive
-string_in_file "\[poller-Master-2\] Passive mode enabled." $VAR/nagios.log
+string_in_file "\[poller-Master-2\] Passive mode enabled." $VAR/shinken.log
 # and the schedulers should connect to it too
-string_in_file "Connection OK to the poller poller-Master-2" $VAR/nagios.log
+string_in_file "Connection OK to the poller poller-Master-2" $VAR/shinken.log
 
 
 echo "Now we clean it"
@@ -579,15 +583,15 @@ echo "##########################################################################
 
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg etc/shinken-specific.cfg
+localize_config etc/shinken.cfg etc/shinken-specific.cfg
 bin/launch_all_debug.sh
-globalize_config etc/nagios.cfg etc/shinken-specific.cfg
+globalize_config etc/shinken.cfg etc/shinken-specific.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 60
 
 # The number of process changed, we mush look for it
 
@@ -601,31 +605,33 @@ NB_RECEIVERS=2
 NB_ARBITERS=3  # master itself & namedpipe-autogenerated!
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
 
 # Now look if it's also good in the log file too
-string_in_file "Dispatch OK of conf in scheduler scheduler-1" $VAR/nagios.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-master" $VAR/shinken.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
 
 
 # Now we stop the scheduler and restart it
 # We clean the log and restart teh scheduler
 bin/stop_scheduler.sh
-> $VAR/nagios.log
-sleep 3
+> $VAR/shinken.log
+sleep 20
 bin/launch_scheduler_debug.sh
-sleep 120
+sleep 180
 
 
 
-string_in_file "Warning : Scheduler scheduler-1 did not managed its configuration 0,I am not happy." $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-1" $VAR/nagios.log
-string_in_file "We already got the conf 0 (scheduler-1)" $VAR/nagios.log
+string_in_file "Warning : Scheduler scheduler-master did not managed its configuration 0,I am not happy." $VAR/shinken.log
+string_in_file "The receiver receiver-1 manage a unmanaged configuration" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-master" $VAR/shinken.log
+string_in_file "Dispatch OK of configuration 0 to poller poller-master" $VAR/shinken.log
 
 echo "Now we clean it"
 ./clean.sh
@@ -639,15 +645,15 @@ echo "#                                                                         
 echo "####################################################################################"
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-passive-arbiter.cfg
+localize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-passive-arbiter.cfg
 test/bin/launch_all_debug5.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-passive-arbiter.cfg
+globalize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-passive-arbiter.cfg
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 60
 
 # The number of process changed, we mush look for it
 
@@ -665,20 +671,21 @@ NB_RECEIVERS=2
 NB_ARBITERS=3
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
 
 # Now look if it's also good in the log file too
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
 
 # And the string so the spare is taking the control
-string_in_file "Arbiter Master is dead. The arbiter Arbiter-spare take the lead" $VAR/nagios.log
+string_in_file "Arbiter Master is dead. The arbiter Arbiter-spare take the lead" $VAR/shinken.log
 
 echo "Now we clean it"
 ./clean.sh
@@ -697,16 +704,16 @@ CMD_FILE=/tmp/tmp-for-receiver-direct-routing.cmd
 rm -f $CMD_FILE
 
 echo "Now we can start some launch tests"
-localize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-receiver-direct-routing.cfg
+localize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-receiver-direct-routing.cfg
 test/bin/launch_all_debug6.sh
-globalize_config etc/nagios.cfg test/etc/test_stack2/shinken-specific-receiver-direct-routing.cfg
+globalize_config etc/shinken.cfg test/etc/test_stack2/shinken-specific-receiver-direct-routing.cfg
 
 
 
 echo "Now checking for existing apps"
 
 echo "we can sleep 5sec for conf dispatching and so good number of process"
-sleep 10
+sleep 60
 
 # The number of process changed, we mush look for it
 
@@ -724,7 +731,8 @@ NB_RECEIVERS=3
 NB_ARBITERS=3
 
 # Now check if the run looks good with var in the direct directory
-check_good_run var var var
+check_good_run /var/lib/shinken /var/run/shinken /var/log/shinken
+#var var var
 
 echo "All launch of LB daemons is OK"
 
@@ -732,12 +740,12 @@ echo "All launch of LB daemons is OK"
 is_file_present $CMD_FILE
 
 # Now look if it's also good in the log file too
-#string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/nagios.log
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/nagios.log
-string_in_file "OK, no more reactionner sent need" $VAR/nagios.log
-string_in_file "OK, no more poller sent need" $VAR/nagios.log
-string_in_file "OK, no more broker sent need" $VAR/nagios.log
-string_in_file "OK, no more receiver sent need" $VAR/nagios.log
+#string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2" $VAR/shinken.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-1" $VAR/shinken.log
+string_in_file "OK, no more reactionner sent need" $VAR/shinken.log
+string_in_file "OK, no more poller sent need" $VAR/shinken.log
+string_in_file "OK, no more broker sent need" $VAR/shinken.log
+string_in_file "OK, no more receiver sent need" $VAR/shinken.log
 
 now=$(date +%s)
 
@@ -746,23 +754,23 @@ printf "[111] PROCESS_SERVICE_CHECK_RESULT;localhost;LocalDisks;2;Oh yes\n" > $C
 printf "[111] PROCESS_HOST_CHECK_RESULT;localhost;2;Oh yes\n" > $CMD_FILE
 
 
-sleep 30
+sleep 20
 
-string_in_file "Dispatch OK of configuration 0 to poller newpoller"   $VAR/nagios.log
-string_in_file "PASSIVE HOST CHECK: localhost;2;Oh yes"   $VAR/nagios.log
+string_in_file "Dispatch OK of configuration 0 to poller newpoller"   $VAR/shinken.log
+string_in_file "PASSIVE HOST CHECK: localhost;2;Oh yes"   $VAR/shinken.log
 
 # Now we will try to stop the scheduler, and switch to a new one
 echo "STOPPING MASTER SCHEDULER"
 bin/stop_scheduler.sh
 
-sleep 10
+sleep 20
 
 date +%s
 #Check if slave scheduler is ok
-string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2"   $VAR/nagios.log
+string_in_file "Dispatch OK of conf in scheduler scheduler-Master-2"   $VAR/shinken.log
 
 # Clean the log
-> $VAR/nagios.log
+> $VAR/shinken.log
 
 printf "[111] ADD_SIMPLE_POLLER;All;newpoller;localhost;8771\n" > $CMD_FILE
 printf "[111] PROCESS_HOST_CHECK_RESULT;localhost;2;Oh yes again\n" > $CMD_FILE
@@ -770,11 +778,10 @@ printf "[111] PROCESS_HOST_CHECK_RESULT;localhost;2;Oh yes again\n" > $CMD_FILE
 sleep 5
 
 date +%s
-string_in_file "PASSIVE HOST CHECK: localhost;2;Oh yes again"   $VAR/nagios.log
+string_in_file "PASSIVE HOST CHECK: localhost;2;Oh yes again"   $VAR/shinken.log
 
 echo "Now we clean it"
 ./clean.sh
-
 
 
 

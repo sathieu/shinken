@@ -26,9 +26,7 @@ import socket
 
 from shinken.satellitelink import SatelliteLink, SatelliteLinks
 from shinken.property import BoolProp, IntegerProp, StringProp, ListProp
-import shinken.pyro_wrapper as pyro
-Pyro = pyro.Pyro
-
+from shinken.http_client import HTTPExceptions
 from shinken.log import logger
 
 
@@ -47,7 +45,7 @@ class ArbiterLink(SatelliteLink):
         return self.arbiter_name
 
     def get_config(self):
-        return self.con.get_config()
+        return self.con.get('get_config')
 
     # Check is required when prop are set:
     # contacts OR contactgroups is need
@@ -83,15 +81,11 @@ class ArbiterLink(SatelliteLink):
         if self.con is None:
             self.create_connection()
         try:
-            self.con.do_not_run()
+            self.con.get('do_not_run')
             return True
-        except Pyro.errors.URIError, exp:
+        except HTTPExceptions, exp:
             self.con = None
             return False
-        except Pyro.errors.ProtocolError, exp:
-            self.con = None
-            return False
-
 
     def get_satellite_list(self, daemon_type):
         if self.con is None:
@@ -99,10 +93,7 @@ class ArbiterLink(SatelliteLink):
         try:
             r = self.con.get_satellite_list(daemon_type)
             return r
-        except Pyro.errors.URIError, exp:
-            self.con = None
-            return []
-        except Pyro.errors.ProtocolError, exp:
+        except HTTPExceptions, exp:
             self.con = None
             return []
 
@@ -113,10 +104,7 @@ class ArbiterLink(SatelliteLink):
         try:
             r = self.con.get_satellite_status(daemon_type, name)
             return r
-        except Pyro.errors.URIError, exp:
-            self.con = None
-            return {}
-        except Pyro.errors.ProtocolError, exp:
+        except HTTPExceptions, exp:
             self.con = None
             return {}
 
@@ -125,26 +113,21 @@ class ArbiterLink(SatelliteLink):
         if self.con is None:
             self.create_connection()
         try:
-            r = self.con.get_all_states()
+            r = self.con.get('get_all_states')
             return r
-        except Pyro.errors.URIError, exp:
-            self.con = None
-            return None
-        except Pyro.errors.ProtocolError, exp:
+        except HTTPExceptions, exp:
             self.con = None
             return None
 
 
-    def get_objects_properties(self, table, *properties):
+    def get_objects_properties(self, table, properties=[]):
         if self.con is None:
             self.create_connection()
         try:
-            r = self.con.get_objects_properties(table, *properties)
+            print properties
+            r = self.con.get('get_objects_properties', {'table' : table, 'properties' : properties})
             return r
-        except Pyro.errors.URIError, exp:
-            self.con = None
-            return None
-        except Pyro.errors.ProtocolError, exp:
+        except HTTPExceptions, exp:
             self.con = None
             return None
 

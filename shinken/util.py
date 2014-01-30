@@ -27,7 +27,7 @@ import time
 import re
 import copy
 import sys
-import shutil
+#import shutil
 import os
 try:
     from ClusterShell.NodeSet import NodeSet, NodeSetParseRangeError
@@ -72,6 +72,48 @@ def safe_print(*args):
             l.append(unicode(e))
     # Ok, now print it :)
     print u' '.join(l)
+
+
+def split_semicolon(line, maxsplit=None):
+    """Split a line on semicolons characters but not on the escaped semicolons
+    """
+    # Split on ';' character
+    splitted_line = line.split(';')
+
+    splitted_line_size = len(splitted_line)
+
+    # if maxsplit is not specified, we set it to the number of part
+    if maxsplit is None or 0 > maxsplit:
+        maxsplit = splitted_line_size
+
+    # Join parts  to the next one, if ends with a '\'
+    # because we mustn't split if the semicolon is escaped
+    i = 0
+    while i < splitted_line_size - 1:
+
+        # for each part, check if its ends with a '\'
+        ends = splitted_line[i].endswith('\\')
+
+        if ends:
+            # remove the last character '\'
+            splitted_line[i] = splitted_line[i][:-1]
+
+        # append the next part to the current if it is not the last and the current
+        # ends with '\' or if there is more than maxsplit parts
+        if (ends or i >= maxsplit) and i < splitted_line_size - 1:
+
+            splitted_line[i] = ";".join([splitted_line[i], splitted_line[i + 1]])
+
+            # delete the next part
+            del splitted_line[i + 1]
+            splitted_line_size -= 1
+
+        # increase i only if we don't have append because after append the new
+        # string can end with '\'
+        else:
+            i += 1
+
+    return splitted_line
 
 
 ################################### TIME ##################################
@@ -142,7 +184,11 @@ def to_char(val):
     return val[0]
 
 
-def to_split(val):
+def to_split(val, split_on_coma=True):
+    if isinstance(val, list):
+        return val
+    if not split_on_coma:
+        return [val]
     val = val.split(',')
     if val == ['']:
         val = []
@@ -284,6 +330,18 @@ def get_customs_values(d):
     return d.values()
 
 
+# Checks that a parameter has an unique value. If it's a list, the last
+# value set wins.
+def unique_value(val):
+    if isinstance(val, list):
+        if val:
+            return val[-1]
+        else:
+            return ''
+    else:
+        return val
+
+
 ###################### Sorting ################
 def scheduler_no_spare_first(x, y):
     if x.spare and not y.spare:
@@ -364,7 +422,9 @@ def strip_and_uniq(tab):
             new_tab.add(val)
     return list(new_tab)
 
+
 #################### Pattern change application (mainly for host) #######
+
 
 def expand_xy_pattern(pattern):
     ns = NodeSet(str(pattern))
@@ -389,7 +449,7 @@ def got_generation_rule_pattern_change(xy_couples):
     if xy_couples == []:
         return []
     (x, y) = xy_cpl[0]
-    for i in xrange(x, y+1):
+    for i in xrange(x, y + 1):
         n = got_generation_rule_pattern_change(xy_cpl[1:])
         if n != []:
             for e in n:
@@ -409,7 +469,7 @@ def got_generation_rule_pattern_change(xy_couples):
 # output = Unit 3 Port 2 Admin 1
 def apply_change_recursive_pattern_change(s, rule):
     #print "Try to change %s" % s, 'with', rule
-    new_s = s
+    #new_s = s
     (i, m, t) = rule
     #print "replace %s by %s" % (r'%s' % m, str(i)), 'in', s
     s = s.replace(r'%s' % m, str(i))
@@ -523,7 +583,7 @@ def get_key_value_sequence(entry, default_value=None):
                         xy_couples.append((x, y))
                         # We must search if we've gotother X-Y, so
                         # we delete this one, and loop
-                        key = key.replace('[%d-%d]' % (x, y), 'Z'*10)
+                        key = key.replace('[%d-%d]' % (x, y), 'Z' * 10)
                     else:  # no more X-Y in it
                         still_loop = False
 
@@ -567,7 +627,6 @@ def get_key_value_sequence(entry, default_value=None):
     return (array2, GET_KEY_VALUE_SEQUENCE_ERROR_NOERROR)
 
 
-
 ############################### Files management #######################
 # We got a file like /tmp/toto/toto2/bob.png And we want to be sure the dir
 # /tmp/toto/toto2/ will really exists so we can copy it. Try to make if if need
@@ -581,7 +640,7 @@ def expect_file_dirs(root, path):
     tmp_dir = root
     for d in dirs:
         _d = os.path.join(tmp_dir, d)
-        logger.info ('Verify the existence of file %s' % (_d))
+        logger.info('Verify the existence of file %s' % (_d))
         if not os.path.exists(_d):
             try:
                 os.mkdir(_d)
@@ -589,3 +648,147 @@ def expect_file_dirs(root, path):
                 return False
         tmp_dir = _d
     return True
+
+
+######################## Services/hosts search filters  #######################
+# Filters used in services or hosts find_by_filter method
+# Return callback functions which are passed host or service instances, and
+# should return a boolean value that indicates if the inscance mached the
+# filter
+def filter_any(name):
+
+    def inner_filter(host):
+        return True
+
+    return inner_filter
+
+
+def filter_none(name):
+
+    def inner_filter(host):
+        return False
+
+    return inner_filter
+
+
+def filter_host_by_name(name):
+
+    def inner_filter(host):
+        if host is None:
+            return False
+        return host.host_name == name
+
+    return inner_filter
+
+
+def filter_host_by_regex(regex):
+    host_re = re.compile(regex)
+
+    def inner_filter(host):
+        if host is None:
+            return False
+        return host_re.match(host.host_name) is not None
+
+    return inner_filter
+
+
+def filter_host_by_group(group):
+
+    def inner_filter(host):
+        if host is None:
+            return False
+        return group in [g.hostgroup_name for g in host.hostgroups]
+
+    return inner_filter
+
+
+def filter_service_by_name(name):
+
+    def inner_filter(service):
+        if service is None:
+            return False
+        return service.service_description == name
+
+    return inner_filter
+
+
+def filter_service_by_regex_name(regex):
+    host_re = re.compile(regex)
+
+    def inner_filter(service):
+        if service is None:
+            return False
+        return host_re.match(service.service_description) is not None
+
+    return inner_filter
+
+
+def filter_service_by_host_name(host_name):
+
+    def inner_filter(service):
+        if service is None or service.host is None:
+            return False
+        return service.host.host_name == host_name
+
+    return inner_filter
+
+
+def filter_service_by_regex_host_name(regex):
+    host_re = re.compile(regex)
+
+    def inner_filter(service):
+        if service is None or service.host is None:
+            return False
+        return host_re.match(service.host.host_name) is not None
+
+    return inner_filter
+
+
+def filter_service_by_hostgroup_name(group):
+
+    def inner_filter(service):
+        if service is None or service.host is None:
+            return False
+        return group in [g.hostgroup_name for g in service.host.hostgroups]
+
+    return inner_filter
+
+
+def filter_service_by_servicegroup_name(group):
+
+    def inner_filter(service):
+        if service is None:
+            return False
+        return group in [g.servicegroup_name for g in service.servicegroups]
+
+    return inner_filter
+
+
+def filter_host_by_bp_rule_label(label):
+
+    def inner_filter(host):
+        if host is None:
+            return False
+        return label in host.labels
+
+    return inner_filter
+
+
+def filter_service_by_host_bp_rule_label(label):
+
+    def inner_filter(service):
+        if service is None or service.host is None:
+            return False
+        return label in service.host.labels
+
+    return inner_filter
+
+
+def filter_service_by_bp_rule_label(label):
+
+    def inner_filter(service):
+        if service is None:
+            return False
+        return label in service.labels
+
+    return inner_filter

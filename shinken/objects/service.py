@@ -70,14 +70,14 @@ class Service(SchedulingItem):
     properties = SchedulingItem.properties.copy()
     properties.update({
         'host_name':              StringProp(fill_brok=['full_status', 'check_result', 'next_schedule']),
-        'hostgroup_name':         StringProp(default='', fill_brok=['full_status']),
+        'hostgroup_name':         StringProp(default='', fill_brok=['full_status'], merging='join'),
         'service_description':    StringProp(fill_brok=['full_status', 'check_result', 'next_schedule']),
         'display_name':           StringProp(default='', fill_brok=['full_status']),
-        'servicegroups':          StringProp(default='', fill_brok=['full_status'], brok_transformation=to_list_string_of_names),
+        'servicegroups':          StringProp(default='', fill_brok=['full_status'], brok_transformation=to_list_string_of_names, merging='join'),
         'is_volatile':            BoolProp(default='0', fill_brok=['full_status']),
         'check_command':          StringProp(fill_brok=['full_status']),
         'initial_state':          CharProp(default='o', fill_brok=['full_status']),
-        'max_check_attempts':     IntegerProp(fill_brok=['full_status']),
+        'max_check_attempts':     IntegerProp(default='1',fill_brok=['full_status']),
         'check_interval':         IntegerProp(fill_brok=['full_status']),
         'retry_interval':         IntegerProp(fill_brok=['full_status']),
         'active_checks_enabled':  BoolProp(default='1', fill_brok=['full_status'], retention=True),
@@ -100,9 +100,9 @@ class Service(SchedulingItem):
         'notification_period':    StringProp(brok_transformation=to_name_if_possible, fill_brok=['full_status']),
         'notification_options':   ListProp(default='w,u,c,r,f,s', fill_brok=['full_status']),
         'notifications_enabled':  BoolProp(default='1', fill_brok=['full_status'], retention=True),
-        'contacts':               StringProp(default='', brok_transformation=to_list_of_names, fill_brok=['full_status']),
-        'contact_groups':         StringProp(default='', fill_brok=['full_status']),
-        'stalking_options':       ListProp(default='', fill_brok=['full_status']),
+        'contacts':               StringProp(default='', brok_transformation=to_list_of_names, fill_brok=['full_status'], merging='join'),
+        'contact_groups':         StringProp(default='', fill_brok=['full_status'], merging='join'),
+        'stalking_options':       ListProp(default='', fill_brok=['full_status'], merging='join'),
         'notes':                  StringProp(default='', fill_brok=['full_status']),
         'notes_url':              StringProp(default='', fill_brok=['full_status']),
         'action_url':             StringProp(default='', fill_brok=['full_status']),
@@ -114,15 +114,28 @@ class Service(SchedulingItem):
 
         # Shinken specific
         'poller_tag':              StringProp(default='None'),
-        'reactionner_tag':              StringProp(default='None'),
-        'resultmodulations':       StringProp(default=''),
-        'business_impact_modulations':    StringProp(default=''),
-        'escalations':             StringProp(default='', fill_brok=['full_status']),
+        'reactionner_tag':         StringProp(default='None'),
+        'resultmodulations':       StringProp(default='', merging='join'),
+        'business_impact_modulations':    StringProp(default='', merging='join'),
+        'escalations':             StringProp(default='', fill_brok=['full_status'], merging='join'),
         'maintenance_period':      StringProp(default='', brok_transformation=to_name_if_possible, fill_brok=['full_status']),
-        'time_to_orphanage':      IntegerProp(default="300", fill_brok=['full_status']),
+        'time_to_orphanage':       IntegerProp(default="300", fill_brok=['full_status']),
+        'merge_host_contacts': 	   BoolProp(default='0', fill_brok=['full_status']),
+        'labels':                  ListProp(default='', fill_brok=['full_status'], merging='join'),
+
+        # BUSINESS CORRELATOR PART
+        # Business rules output format template
+        'business_rule_output_template': StringProp(default='', fill_brok=['full_status']),
+        # Business rules notifications mode
+        'business_rule_smart_notifications': BoolProp(default='0', fill_brok=['full_status']),
+        # Treat downtimes as acknowledgements in smart notifications
+        'business_rule_downtime_as_ack': BoolProp(default='0', fill_brok=['full_status']),
+        # Enforces child nodes notification options
+        'business_rule_host_notification_options':    ListProp(default='', fill_brok=['full_status']),
+        'business_rule_service_notification_options': ListProp(default='', fill_brok=['full_status']),
 
         # Easy Service dep definition
-        'service_dependencies':   ListProp(default=''), # TODO: find a way to brok it?
+        'service_dependencies':   ListProp(default='', merging='join'), # TODO: find a way to brok it?
 
         # service generator
         'duplicate_foreach':       StringProp(default=''),
@@ -136,14 +149,14 @@ class Service(SchedulingItem):
         'trigger_name':    ListProp(default=''),
 
         # Trending
-        'trending_policies':    ListProp(default='', fill_brok=['full_status']),
+        'trending_policies':    ListProp(default='', fill_brok=['full_status'], merging='join'),
 
         # Our check ways. By defualt void, but will filled by an inner if need
-        'checkmodulations':       ListProp(default='', fill_brok=['full_status']),
-        'macromodulations':       ListProp(default=''),
+        'checkmodulations':       ListProp(default='', fill_brok=['full_status'], merging='join'),
+        'macromodulations':       ListProp(default='', merging='join'),
 
         # Custom views
-        'custom_views'     :    ListProp(default='', fill_brok=['full_status']),
+        'custom_views'     :    ListProp(default='', fill_brok=['full_status'], merging='join'),
 
         # UI aggregation
         'aggregation'      :    StringProp(default='', fill_brok=['full_status']),
@@ -249,8 +262,11 @@ class Service(SchedulingItem):
         # BUSINESS CORRELATOR PART
         # Say if we are business based rule or not
         'got_business_rule': BoolProp(default=False, fill_brok=['full_status']),
+        # Previously processed business rule (with macro expanded)
+        'processed_business_rule': StringProp(default="", fill_brok=['full_status']),
         # Our Dependency node for the business rule
         'business_rule': StringProp(default=None),
+
 
         # Here it's the elements we are depending on
         # so our parents as network relation, or a host
@@ -359,7 +375,9 @@ class Service(SchedulingItem):
         return "%s/%s" % (self.host.host_name, self.service_description)
 
     def get_full_name(self):
-        return "%s/%s" % (self.host.host_name, self.service_description)
+        if self.host and hasattr(self.host, 'host_name') and hasattr(self, 'service_description'):
+            return "%s/%s" % (self.host.host_name, self.service_description)
+        return 'UNKNOWN-SERVICE'
 
     # Get our realm, so in fact our host one
     def get_realm(self):
@@ -401,7 +419,7 @@ class Service(SchedulingItem):
         if self.configuration_errors != []:
             state = False
             for err in self.configuration_errors:
-                logger.info(err)
+                logger.error("[service::%s] %s" % (self.get_full_name(), err))
 
         # If no notif period, set it to None, mean 24x7
         if not hasattr(self, 'notification_period'):
@@ -439,8 +457,8 @@ class Service(SchedulingItem):
             logger.info("%s: I've got no notification_interval but I've got notifications enabled" % self.get_name())
             state = False
         if self.host is None:
-            logger.info("The service '%s' got an unknown host_name '%s'." % (desc, self.host_name))
-            state = False
+            logger.warning("The service '%s' got an unknown host_name '%s'." % (desc, self.host_name))
+            # do not set tis a a true error, only we will delete this after
         if not hasattr(self, 'check_period'):
             self.check_period = None
         if hasattr(self, 'service_description'):
@@ -548,7 +566,7 @@ class Service(SchedulingItem):
                                 safe_key_value = re.sub(r'[' + "`~!$%^&*\"|'<>?,()=" + ']+', '_', key_value[key])
                                 new_s.service_description = self.service_description.replace('$' + key + '$', safe_key_value)
                         # Here is a list of property where we will expand the $KEY$ by the value
-                        _the_expandables = ['check_command', 'aggregation', 'service_dependencies']
+                        _the_expandables = ['check_command', 'aggregation', 'service_dependencies', 'event_handler']
                         for prop in _the_expandables:
                             if hasattr(self, prop):
                                 # here we can replace VALUE, VALUE1, VALUE2,...
@@ -583,7 +601,6 @@ class Service(SchedulingItem):
 #                                  __/ |
 #                                 |___/
 ####
-
 
     # Set unreachable: our host is DOWN, but it mean nothing for a service
     def set_unreachable(self):
@@ -696,7 +713,7 @@ class Service(SchedulingItem):
     # Add a log entry with a SERVICE ALERT like:
     # SERVICE ALERT: server;Load;UNKNOWN;HARD;1;I don't know what to say...
     def raise_alert_log_entry(self):
-        console_logger.info('SERVICE ALERT: %s;%s;%s;%s;%d;%s'
+        console_logger.alert('SERVICE ALERT: %s;%s;%s;%s;%d;%s'
                             % (self.host.get_name(), self.get_name(),
                                self.state, self.state_type,
                                self.attempt, self.output))
@@ -733,7 +750,7 @@ class Service(SchedulingItem):
         else:
             state = self.state
         if self.__class__.log_notifications:
-            console_logger.info("SERVICE NOTIFICATION: %s;%s;%s;%s;%s;%s"
+            console_logger.alert("SERVICE NOTIFICATION: %s;%s;%s;%s;%s;%s"
                                 % (contact.get_name(),
                                    self.host.get_name(), self.get_name(), state,
                                    command.get_name(), self.output))
@@ -742,7 +759,7 @@ class Service(SchedulingItem):
     # SERVICE EVENT HANDLER: test_host_0;test_ok_0;OK;SOFT;4;eventhandler
     def raise_event_handler_log_entry(self, command):
         if self.__class__.log_event_handlers:
-            console_logger.info("SERVICE EVENT HANDLER: %s;%s;%s;%s;%s;%s"
+            console_logger.alert("SERVICE EVENT HANDLER: %s;%s;%s;%s;%s;%s"
                                 % (self.host.get_name(), self.get_name(),
                                    self.state, self.state_type,
                                    self.attempt, command.get_name()))
@@ -750,7 +767,7 @@ class Service(SchedulingItem):
     # Raise a log entry with FLAPPING START alert like
     # SERVICE FLAPPING ALERT: server;LOAD;STARTED; Service appears to have started flapping (50.6% change >= 50.0% threshold)
     def raise_flapping_start_log_entry(self, change_ratio, threshold):
-        console_logger.info("SERVICE FLAPPING ALERT: %s;%s;STARTED; "
+        console_logger.alert("SERVICE FLAPPING ALERT: %s;%s;STARTED; "
                             "Service appears to have started flapping "
                             "(%.1f%% change >= %.1f%% threshold)"
                             % (self.host.get_name(), self.get_name(),
@@ -759,7 +776,7 @@ class Service(SchedulingItem):
     # Raise a log entry with FLAPPING STOP alert like
     # SERVICE FLAPPING ALERT: server;LOAD;STOPPED; Service appears to have stopped flapping (23.0% change < 25.0% threshold)
     def raise_flapping_stop_log_entry(self, change_ratio, threshold):
-        console_logger.info("SERVICE FLAPPING ALERT: %s;%s;STOPPED; "
+        console_logger.alert("SERVICE FLAPPING ALERT: %s;%s;STOPPED; "
                             "Service appears to have stopped flapping "
                             "(%.1f%% change < %.1f%% threshold)"
                             % (self.host.get_name(), self.get_name(),
@@ -774,7 +791,7 @@ class Service(SchedulingItem):
     # Raise a log entry when a downtime begins
     # SERVICE DOWNTIME ALERT: test_host_0;test_ok_0;STARTED; Service has entered a period of scheduled downtime
     def raise_enter_downtime_log_entry(self):
-        console_logger.info("SERVICE DOWNTIME ALERT: %s;%s;STARTED; "
+        console_logger.alert("SERVICE DOWNTIME ALERT: %s;%s;STARTED; "
                             "Service has entered a period of scheduled "
                             "downtime"
                             % (self.host.get_name(), self.get_name()))
@@ -782,14 +799,14 @@ class Service(SchedulingItem):
     # Raise a log entry when a downtime has finished
     # SERVICE DOWNTIME ALERT: test_host_0;test_ok_0;STOPPED; Service has exited from a period of scheduled downtime
     def raise_exit_downtime_log_entry(self):
-        console_logger.info("SERVICE DOWNTIME ALERT: %s;%s;STOPPED; Service "
+        console_logger.alert("SERVICE DOWNTIME ALERT: %s;%s;STOPPED; Service "
                             "has exited from a period of scheduled downtime"
                             % (self.host.get_name(), self.get_name()))
 
     # Raise a log entry when a downtime prematurely ends
     # SERVICE DOWNTIME ALERT: test_host_0;test_ok_0;CANCELLED; Service has entered a period of scheduled downtime
     def raise_cancel_downtime_log_entry(self):
-        console_logger.info("SERVICE DOWNTIME ALERT: %s;%s;CANCELLED; "
+        console_logger.alert("SERVICE DOWNTIME ALERT: %s;%s;CANCELLED; "
                             "Scheduled downtime for service has been cancelled."
                             % (self.host.get_name(), self.get_name()))
 
@@ -923,6 +940,14 @@ class Service(SchedulingItem):
         if self.host.state != self.host.ok_up:
             return True
 
+        # Block if business rule smart notifications is enabled and all its
+        # childs have been acknowledged or are under downtime.
+        if self.got_business_rule is True \
+                and self.business_rule_smart_notifications is True \
+                and self.business_rule_notification_is_blocked() is True \
+                and type == 'PROBLEM':
+            return True
+
         return False
 
     # Get a oc*p command if item has obsess_over_*
@@ -1025,7 +1050,55 @@ class Services(Items):
         self.linkify_with_triggers(triggers)
         self.linkify_with_checkmodulations(checkmodulations)
         self.linkify_with_macromodulations(macromodulations)
-        
+
+    def override_properties(self, hosts):
+        for host in hosts:
+            # We're only looking for hosts having service overrides defined
+            if not hasattr(host, 'service_overrides') or not host.service_overrides:
+                continue
+            cache = {}
+            if isinstance(host.service_overrides, list):
+                service_overrides = host.service_overrides
+            else:
+                service_overrides = [host.service_overrides]
+            for ovr in service_overrides:
+                # Checks service override syntax
+                match = re.match(r'^([^,]+),([^\s]+)\s+(.*)$', ovr)
+                if match is None:
+                    err = "Error: invalid service override syntax: %s" % ovr
+                    host.configuration_errors.append(err)
+                    continue
+                name, prop, value = match.groups()
+                # To speep up search if several properties are overriden on the
+                # same service, we keep them in temporary cache
+                key = "%s/%s" % (host.host_name, name)
+                if key in cache:
+                    service = cache[key]
+                else:
+                    # Looks for corresponding service
+                    # As hosts and service are not yet linked, we have to walk
+                    # through services to find which is associated to host.
+                    service = None
+                    for s in self:
+                        if not hasattr(s, "host_name") or not hasattr(s, "service_description"):
+                            # this is a template
+                            continue
+                        if s.host_name == host.host_name and s.service_description == name:
+                            service = s
+                            break
+                    if service is None:
+                        err = "Error: trying to override property '%s' on service '%s' but it's unknown for this host" % (prop, name)
+                        host.configuration_errors.append(err)
+                        continue
+                    cache[key] = service
+                # Checks if override is allowed
+                excludes = ['host_name', 'service_description', 'use',
+                            'servicegroups', 'trigger', 'trigger_name']
+                if prop in excludes:
+                    err = "Error: trying to override '%s', a forbidden property for service '%s'" % (prop, name)
+                    host.configuration_errors.append(err)
+                    continue
+                setattr(service, prop, value)
 
     # We can link services with hosts so
     # We can search in O(hosts) instead
@@ -1039,8 +1112,9 @@ class Services(Items):
     def linkify_s_by_hst(self, hosts):
         for s in self:
             # If we do not have an host_name, we set it as
-            # a template element to delete. (like Nagios
+            # a template element to delete. (like Nagios)
             if not hasattr(s, 'host_name'):
+                s.host = None
                 continue
             try:
                 hst_name = s.host_name
@@ -1051,8 +1125,8 @@ class Services(Items):
                 if s.host is not None:
                     hst.add_service_link(s)
                 else:  # Ok, the host do not exists!
-                    err = "Error: the service '%s' do not have a host_name not hostgroup_name" % (self.get_name())
-                    s.configuration_errors.append(err)
+                    err = "Warning: the service '%s' got an invalid host_name '%s'" % (self.get_name(), hst_name)
+                    s.configuration_warnings.append(err)
                     continue
             except AttributeError, exp:
                 pass  # Will be catch at the is_correct moment
@@ -1120,6 +1194,16 @@ class Services(Items):
     def apply_dependencies(self):
         for s in self:
             s.fill_daddy_dependency()
+
+
+    # For services the main clean is about service with bad hosts
+    def clean(self):
+        to_del = []
+        for s in self:
+            if not s.host:
+                to_del.append(s.id)
+        for sid in to_del:
+            del self.items[sid]
 
     # Add in our queue a service create from another. Special case:
     # is a template: so hname is a name of template, so need to get all

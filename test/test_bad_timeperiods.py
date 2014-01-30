@@ -28,7 +28,7 @@ from shinken_test import *
 class TestConfig(ShinkenTest):
 
     def setUp(self):
-        self.setup_with_file('etc/nagios_bad_timeperiods.cfg')
+        self.setup_with_file('etc/shinken_bad_timeperiods.cfg')
 
     def test_dummy(self):
         #
@@ -37,7 +37,7 @@ class TestConfig(ShinkenTest):
         #
         print "Get the bad timeperiod"
         tp = self.conf.timeperiods.find_by_name("24x7")
-        self.assert_(tp.is_correct() == False)
+        self.assert_(tp.is_correct() == True)
 
 
 if __name__ == '__main__':

@@ -32,6 +32,8 @@ import socket
 import traceback
 import cStringIO
 import cPickle
+import copy
+import json
 
 from shinken.objects.config import Config
 from shinken.external_command import ExternalCommandManager
@@ -46,22 +48,27 @@ from shinken.external_command import ExternalCommand
 # It connects, and together we decide who's the Master and who's the Slave, etc.
 # Here is a also a function to get a new conf from the master
 class IForArbiter(Interface):
-
     def have_conf(self, magic_hash):
+        # Beware, we got an str in entry, not an int
+        magic_hash = int(magic_hash)
         # I've got a conf and a good one
         if self.app.cur_conf and self.app.cur_conf.magic_hash == magic_hash:
             return True
         else:  # I've no conf or a bad one
             return False
 
+
     # The master Arbiter is sending us a new conf in a pickle way. Ok, we take it
-    def put_conf(self, conf_raw):
-        conf = cPickle.loads(conf_raw)
+    def put_conf(self, conf):
+        conf = cPickle.loads(conf)
         super(IForArbiter, self).put_conf(conf)
         self.app.must_run = False
+    put_conf.method = 'POST'
+
 
     def get_config(self):
         return self.app.conf
+
 
     # The master arbiter asks me not to run!
     def do_not_run(self):
@@ -73,6 +80,8 @@ class IForArbiter(Interface):
             logger.debug("Received message to not run. I am the spare, stopping.")
             self.app.last_master_speack = time.time()
             self.app.must_run = False
+    do_not_run.need_lock = False
+
 
     # Here a function called by check_shinken to get daemon status
     def get_satellite_status(self, daemon_type, daemon_name):
@@ -100,9 +109,12 @@ class IForArbiter(Interface):
             return satellite_list
         return None
 
+
     # Dummy call. We are the master, we manage what we want
     def what_i_managed(self):
         return {}
+    what_i_managed.need_lock = False
+
 
     def get_all_states(self):
         res = {'arbiter': self.app.conf.arbiters,
@@ -113,10 +125,11 @@ class IForArbiter(Interface):
                'broker': self.app.conf.brokers}
         return res
 
+
     # Try to give some properties of our objects
-    def get_objects_properties(self, table, *properties):
+    def get_objects_properties(self, table, properties=[]):
         logger.debug('ASK:: table= %s, properties= %s' % (str(table), str(properties)))
-        objs = getattr(self.app.conf, table, None)
+        objs = getattr(self.conf, table, None)
         logger.debug("OBJS:: %s" % str(objs))
         if not objs:
             return ''
@@ -127,7 +140,7 @@ class IForArbiter(Interface):
                 v = getattr(obj, prop, '')
                 l.append(v)
             res.append(l)
-        return res
+        return "OKIIIII"
 
 
 # Main Arbiter Class
@@ -159,6 +172,7 @@ class Arbiter(Daemon):
 
         self.interface = IForArbiter(self)
         self.conf = Config()
+
 
 
     # Use for adding things like broks
@@ -219,14 +233,17 @@ class Arbiter(Daemon):
                 b = s.get_initial_status_brok()
                 self.add(b)
 
+
     # Load the external commander
     def load_external_command(self, e):
         self.external_command = e
         self.fifo = e.open()
 
+
     def get_daemon_links(self, daemon_type):
         # the attribute name to get these differs for schedulers and arbiters
         return daemon_type + 's'
+
 
     def load_config_file(self):
         logger.info("Loading configuration")
@@ -268,6 +285,10 @@ class Arbiter(Daemon):
 
         logger.info("My own modules: " + ','.join([m.get_name() for m in self.me.modules]))
 
+        self.modules_dir = getattr(self.conf, 'modules_dir', '')
+
+        # Ok it's time to load the module manager now!
+        self.load_modules_manager()
         # we request the instances without them being *started*
         # (for those that are concerned ("external" modules):
         # we will *start* these instances after we have been daemonized (if requested)
@@ -355,6 +376,9 @@ class Arbiter(Daemon):
         # search lists
         self.conf.create_reversed_list()
 
+        # Overrides sepecific service instaces properties
+        self.conf.override_properties()
+
         # Pythonize values
         self.conf.pythonize()
 
@@ -394,6 +418,9 @@ class Arbiter(Daemon):
 
         # Correct conf?
         self.conf.is_correct()
+
+        # Maybe some elements where not wrong, so we must clean if possible
+        self.conf.clean()
 
         # If the conf is not correct, we must get out now
         # if not self.conf.conf_is_correct:
@@ -439,6 +466,8 @@ class Arbiter(Daemon):
         self.user = self.conf.shinken_user
         self.group = self.conf.shinken_group
         self.daemon_enabled = self.conf.daemon_enabled
+        self.daemon_thread_pool_size = self.conf.daemon_thread_pool_size
+        self.http_backend = self.conf.http_backend
 
         # If the user sets a workdir, lets use it. If not, use the
         # pidfile directory
@@ -490,7 +519,7 @@ class Arbiter(Daemon):
         print "***********"*5
         print "WARNING : this feature is NOT supported in this version!"
         print "***********"*5
-        
+
         migration_module_name = self.migrate.strip()
         mig_mod = self.conf.modules.find_by_name(migration_module_name)
         if not mig_mod:
@@ -524,7 +553,7 @@ class Arbiter(Daemon):
             f(objs)
         # Ok we can exit now
         sys.exit(0)
-        
+
 
 
     # Main loop function
@@ -539,12 +568,12 @@ class Arbiter(Daemon):
             # Maybe we are in a migration phase. If so, we will bailout here
             if self.migrate:
                 self.go_migrate()
-                
+
             # Look if we are enabled or not. If ok, start the daemon mode
             self.look_for_early_exit()
             self.do_daemon_init_and_start()
-            
-            self.uri_arb = self.pyro_daemon.register(self.interface, "ForArbiter")
+
+            self.uri_arb = self.http_daemon.register(self.interface)#, "ForArbiter")
 
             # ok we are now fully daemonized (if requested)
             # now we can start our "external" modules (if any):
@@ -564,6 +593,7 @@ class Arbiter(Daemon):
             logger.critical("You can log a bug ticket at https://github.com/naparuba/shinken/issues/new to get help")
             logger.critical("Exception trace follows: %s" % (traceback.format_exc()))
             raise
+
 
     def setup_new_conf(self):
         """ Setup a new conf received from a Master arbiter. """

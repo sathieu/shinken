@@ -55,7 +55,10 @@ class PropertiesTester(object):
         for name, value in self.properties.iteritems():
             self.assertIn(name, item.properties,
                           msg='property %r not found in %s' % (name, self.item.my_type))
-            self.assertEqual(item.properties[name].default, value)
+            if hasattr(item.properties[name], 'default'):
+                if item.properties[name].default != value:
+                    print "%s, %s: %s, %s" % (name, value, item.properties[name].default, value)
+                self.assertEqual(item.properties[name].default, value)
 
     def test_all_props_are_tested(self):
         item = self.item # shortcut
@@ -96,11 +99,12 @@ class TestConfig(PropertiesTester, ShinkenTest, unittest.TestCase):
 
     properties = dict([
         ('prefix', '/usr/local/shinken/'),
-        ('workdir', ''),
+        ('workdir', '/var/run/shinken/'),
         ('config_base_dir', ''),
+        ('modules_dir', '/var/lib/shinken/modules'),
         ('use_local_log', '1'),
         ('log_level', 'WARNING'),
-        ('local_log', 'arbiterd.log'),
+        ('local_log', '/var/log/shinken/arbiterd.log'),
         ('resource_file', '/tmp/resources.txt'),
         ('shinken_user', shinken.daemon.get_cur_user()),
         ('shinken_group', shinken.daemon.get_cur_group()),
@@ -114,7 +118,7 @@ class TestConfig(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('log_archive_path', '/usr/local/shinken/var/archives'),
         ('check_external_commands', '1'),
         ('command_file', ''),
-        ('lock_file', 'arbiterd.pid'),
+        ('lock_file', '/var/run/shinken/arbiterd.pid'),
         ('state_retention_file', ''),
         ('retention_update_interval', '60'),
         ('use_syslog', '0'),
@@ -203,9 +207,9 @@ class TestConfig(PropertiesTester, ShinkenTest, unittest.TestCase):
 
         # SSL part
         ('use_ssl', '0'),
-        ('certs_dir', 'etc/certs'),
+        ('server_key', 'etc/certs/server.key'),
         ('ca_cert', 'etc/certs/ca.pem'),
-        ('server_cert', 'etc/certs/server.pem'),
+        ('server_cert', 'etc/certs/server.cert'),
         ('hard_ssl_name_check', '0'),
 
         ('human_timestamp_log', '0'),
@@ -219,6 +223,11 @@ class TestConfig(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('webui_lock_file', 'webui.pid'),
         ('webui_port', '8080'),
         ('webui_host', '0.0.0.0'),
+
+        ('use_multiprocesses_serializer', '0'),
+        ('daemon_thread_pool_size', '8'),
+        ('enable_environment_macros', '1'),
+        ('timeout_exit_status', '2'),
         ])
 
     def setUp(self):
@@ -240,6 +249,7 @@ class TestCommand(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('reactionner_tag', 'None'),
         ('module_type', None),
         ('timeout', '-1'),
+        ('enable_environment_macros', 0),
         ])
 
     def setUp(self):
@@ -463,7 +473,7 @@ class TestHost(PropertiesTester, ShinkenTest, unittest.TestCase):
 
     without_default = [
         'host_name', 'alias', 'address',
-        'max_check_attempts', 'check_period', 'notification_period']
+        'check_period', 'notification_period']
 
     properties = dict([
         ('imported_from', 'unknown'),
@@ -475,6 +485,7 @@ class TestHost(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('check_command', '_internal_host_up'),
         ('initial_state', 'u'),
         ('check_interval', '0'),
+        ('max_check_attempts', '1'),
         ('retry_interval', '0'),
         ('active_checks_enabled', '1'),
         ('passive_checks_enabled', '1'),
@@ -523,6 +534,13 @@ class TestHost(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('checkmodulations', ''),
         ('macromodulations', ''),
         ('custom_views', ''),
+        ('service_overrides', ''),
+        ('business_rule_output_template', ''),
+        ('business_rule_smart_notifications', '0'),
+        ('business_rule_downtime_as_ack', '0'),
+        ('labels', ''),
+        ('business_rule_host_notification_options', ''),
+        ('business_rule_service_notification_options', ''),
         ])
 
     def setUp(self):
@@ -729,13 +747,14 @@ class TestService(PropertiesTester, ShinkenTest, unittest.TestCase):
 
     without_default = [
         'host_name', 'service_description',
-        'check_command', 'max_check_attempts', 'check_interval',
+        'check_command', 'check_interval',
         'retry_interval', 'check_period', 'notification_period']
 
     properties = dict([
         ('imported_from', 'unknown'),
         ('use', ''),
         ('name', ''),
+        ('max_check_attempts', '1'),
         ('hostgroup_name', ''),
         ('display_name', ''),
         ('servicegroups', ''),
@@ -784,10 +803,17 @@ class TestService(PropertiesTester, ShinkenTest, unittest.TestCase):
         ('time_to_orphanage', '300'),
         ('trending_policies', ''),
         ('checkmodulations', ''),
-        ('macromodulations', ''),        
+        ('macromodulations', ''),
         ('aggregation', ''),
         ('service_dependencies', ''),
         ('custom_views', ''),
+        ('merge_host_contacts', '0'),
+        ('business_rule_output_template', ''),
+        ('business_rule_smart_notifications', '0'),
+        ('business_rule_downtime_as_ack', '0'),
+        ('labels', ''),
+        ('business_rule_host_notification_options', ''),
+        ('business_rule_service_notification_options', ''),
         ])
 
     def setUp(self):

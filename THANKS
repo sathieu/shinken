@@ -99,4 +99,13 @@ To Georges Racinet for his bugs reports about SSL
 To pepejey for his bug report about void password in ldap auth module. And NO THANKS to the Ldap protocol RFC guys :( 
 To Benoit Dunand-Laisin for his bug report about livestatus command management regression
 To Alexandre Veyrenc for his patch about Graphite management of perfdata with spare in names
+To Frederic Mohier for his fix about nmap discovery and windows
+To Mickaël Falck for his patch about network packs interface new parameters
+To Squizou for his patch about ; split code
+To Alexander Springer for his patch about merging host and services contacts
+To Stefan Taute for his patch about syslog module collisions
+To Jean-Claude Computing for his patch about syslog module collisions too
+To Robin Gloster for his bug fix about bad wmi ini dir
+To Samuel Milette-Lacombe for his patch about core configuration export on broker
+To Mathieu Parent for his patch about Thruk doc
 

@@ -176,8 +176,9 @@ class Contact(Item):
         # at all!!
         if self.notificationways == []:
             for p in _special_properties:
-                logger.error("[contact::%s] %s property is missing" % (self.get_name(), p))
-                state = False
+                if not hasattr(self, p):
+                    logger.error("[contact::%s] %s property is missing" % (self.get_name(), p))
+                    state = False
 
         if hasattr(self, 'contact_name'):
             for c in cls.illegal_object_name_chars:
@@ -235,7 +236,7 @@ class Contacts(Items):
                 if nw is not None:
                     new_notificationways.append(nw)
                 else:
-                    err = "The %s of the %s '%s' named '%s' is unknown!" % (prop, i.__class__.my_type, i.get_name(), nw_name)
+                    err = "The 'notificationways' of the %s '%s' named '%s' is unknown!" % (i.__class__.my_type, i.get_name(), nw_name)
                     i.configuration_errors.append(err)
             # Get the list, but first make elements uniq
             i.notificationways = list(set(new_notificationways))
@@ -251,6 +252,12 @@ class Contacts(Items):
     def explode(self, contactgroups, notificationways):
         # Contactgroups property need to be fullfill for got the informations
         self.apply_partial_inheritance('contactgroups')
+        # _special properties maybe came from a template, so
+        # import them before grok ourselves
+        for prop in _special_properties:
+            if prop == 'contact_name':
+                continue
+            self.apply_partial_inheritance(prop)
 
         # Register ourself into the contactsgroups we are in
         for c in self:

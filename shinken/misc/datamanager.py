@@ -25,7 +25,7 @@
 
 from shinken.util import safe_print
 from shinken.misc.sorter import hst_srv_sort, last_state_change_earlier
-
+from shinken.misc.filter  import only_related_to
 
 class DataManager(object):
     def __init__(self):
@@ -189,11 +189,11 @@ class DataManager(object):
         return len(self.get_all_problems(to_sort=False))
 
     # Get the number of all problems, even the ack ones
-    def get_nb_all_problems(self):
+    def get_nb_all_problems(self,user):
         res = []
         res.extend([s for s in self.rg.services if s.state not in ['OK', 'PENDING'] and not s.is_impact])
         res.extend([h for h in self.rg.hosts if h.state not in ['UP', 'PENDING'] and not h.is_impact])
-        return len(res)
+        return len(only_related_to(res,user))
 
     # Return the number of impacts
     def get_nb_impacts(self):
@@ -250,14 +250,22 @@ class DataManager(object):
         all_services = self.rg.services
         problem_services = []
         problem_services.extend([s for s in self.rg.services if s.state not in ['OK', 'PENDING'] and not s.is_impact])
-        return (100-(len(problem_services) *100)/len(all_services))
+        if len(all_services) == 0:
+            res = 0
+        else:
+            res = (100-(len(problem_services) *100)/len(all_services))
+        return res
               
     # Get percent of all Hosts
     def get_per_hosts_state(self):
         all_hosts = self.rg.hosts
         problem_hosts = []
         problem_hosts.extend([s for s in self.rg.hosts if s.state not in ['UP', 'PENDING'] and not s.is_impact])
-        return (100-(len(problem_hosts) *100)/len(all_hosts))
+        if len(all_hosts) == 0:
+            res = 0
+        else:
+            res = (100-(len(problem_hosts) *100)/len(all_hosts))
+        return res
               
 
     # For all business impacting elements, and give the worse state

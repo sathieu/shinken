@@ -33,7 +33,9 @@ class Check(Action):
     """ ODO: Add some comment about this class for the doc"""
     # AutoSlots create the __slots__ with properties and
     # running_properties names
-    __metaclass__ = AutoSlots
+
+    ###FIXME : reenable AutoSlots if possible
+    #__metaclass__ = AutoSlots
 
     my_type = 'check'
 
@@ -67,7 +69,7 @@ class Check(Action):
 
     def __init__(self, status, command, ref, t_to_go, dep_check=None, id=None,
                  timeout=10, poller_tag='None', reactionner_tag='None',
-                 env={}, module_type='fork', from_trigger=False):
+                 env={}, module_type='fork', from_trigger=False, dependency_check=False):
 
         self.is_a = 'check'
         self.type = ''
@@ -107,6 +109,8 @@ class Check(Action):
         else:
             self.internal = False
         self.from_trigger = from_trigger
+        self.dependency_check = dependency_check
+
 
     def copy_shell(self):
         """return a copy of the check but just what is important for execution
@@ -139,3 +143,6 @@ class Check(Action):
 
     def set_type_passive(self):
         self.check_type = 1
+
+    def is_dependent(self):
+        return self.dependency_check

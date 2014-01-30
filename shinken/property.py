@@ -25,7 +25,7 @@
 
 import re
 
-from shinken.util import to_float, to_split, to_char, to_int
+from shinken.util import to_float, to_split, to_char, to_int, unique_value
 from shinken.log  import logger
 
 __all__ = ['UnusedProp', 'BoolProp', 'IntegerProp', 'FloatProp',
@@ -58,7 +58,7 @@ class Property(object):
                  fill_brok=None, conf_send_preparation=None,
                  brok_transformation=None, retention=False,
                  retention_preparation=None, to_send=False,
-                 override=False, managed=True):
+                 override=False, managed=True, split_on_coma=True, merging='uniq'):
 
         """
         `default`: default value to be used if this property is not set.
@@ -78,6 +78,9 @@ class Property(object):
         `retention`: if set, we will save this property in the retention files
         `retention_preparation`: function, if set, will go this function before
                      being save to the retention data
+        `split_on_coma`: indicates that list property value should not be
+                     splitted on coma delimiter (values conain comas that
+                     we want to keep).
 
         Only for the initial call:
 
@@ -95,6 +98,9 @@ class Property(object):
                      value of the configuration we send it
 
         managed: property that is managed in Nagios but not in Shinken
+
+        merging: for merging properties, should we take only one or we can
+                     link with ,
 
         """
 
@@ -114,6 +120,8 @@ class Property(object):
         self.override = override
         self.managed = managed
         self.unused = False
+        self.merging = merging
+        self.split_on_coma = split_on_coma
 
 
 class UnusedProp(Property):
@@ -153,6 +161,7 @@ class BoolProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
+        val = unique_value(val)
         return _boolean_states[val.lower()]
 
 
@@ -161,6 +170,7 @@ class IntegerProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
+        val = unique_value(val)
         return to_int(val)
 
 
@@ -169,6 +179,7 @@ class FloatProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
+        val = unique_value(val)
         return to_float(val)
 
 
@@ -177,6 +188,7 @@ class CharProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
+        val = unique_value(val)
         return to_char(val)
 
 
@@ -185,6 +197,7 @@ class StringProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
+        val = unique_value(val)
         return val
 
 
@@ -201,13 +214,14 @@ class ListProp(Property):
 
     #@staticmethod
     def pythonize(self, val):
-        return to_split(val)
+        return to_split(val, self.split_on_coma)
 
 
 class LogLevelProp(StringProp):
     """ A string property representing a logging level """
 
     def pythonize(self, val):
+        val = unique_value(val)
         return logger.get_level_id(val)
 
 
@@ -226,7 +240,7 @@ class DictProp(Property):
         self.elts_prop = elts_prop()
 
     def pythonize(self, val):
-
+        val = unique_value(val)
         #import traceback; traceback.print_stack()
         def split(kv):
             m = re.match("^\s*([^\s]+)\s*=\s*([^\s]+)\s*$", kv)
@@ -255,6 +269,7 @@ class AddrProp(Property):
             i.e: val = "192.168.10.24:445"
             NOTE: port is optional
         """
+        val = unique_value(val)
         m = re.match("^([^:]*)(?::(\d+))?$", val)
         if m is None:
             raise ValueError

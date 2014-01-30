@@ -40,6 +40,7 @@ import time
 import random
 import cPickle
 from StringIO import StringIO
+from multiprocessing import Process, Manager
 
 from item import Item
 from timeperiod import Timeperiod, Timeperiods
@@ -69,6 +70,7 @@ from serviceextinfo import ServiceExtInfo, ServicesExtInfo
 from trigger import Trigger, Triggers
 from pack import Pack, Packs
 
+from shinken.util import split_semicolon
 from shinken.arbiterlink import ArbiterLink, ArbiterLinks
 from shinken.schedulerlink import SchedulerLink, SchedulerLinks
 from shinken.reactionnerlink import ReactionnerLink, ReactionnerLinks
@@ -77,7 +79,7 @@ from shinken.receiverlink import ReceiverLink, ReceiverLinks
 from shinken.pollerlink import PollerLink, PollerLinks
 from shinken.graph import Graph
 from shinken.log import logger, console_logger
-from shinken.property import UnusedProp, BoolProp, IntegerProp, CharProp, StringProp, LogLevelProp
+from shinken.property import UnusedProp, BoolProp, IntegerProp, CharProp, StringProp, LogLevelProp, ListProp
 from shinken.daemon import get_cur_user, get_cur_group
 
 no_longer_used_txt = 'This parameter is not longer take from the main file, but must be defined in the status_dat broker module instead. But Shinken will create you one if there are no present and use this parameter in it, so no worry.'
@@ -101,11 +103,12 @@ class Config(Item):
     # *usage_text: if present, will print it to explain why it's no more useful
     properties = {
         'prefix':                   StringProp(default='/usr/local/shinken/'),
-        'workdir':                  StringProp(default=''),
+        'workdir':                  StringProp(default='/var/run/shinken/'),
         'config_base_dir':          StringProp(default=''), # will be set when we will load a file
+        'modules_dir':               StringProp(default='/var/lib/shinken/modules'),
         'use_local_log':            BoolProp(default='1'),
         'log_level':                LogLevelProp(default='WARNING'),
-        'local_log':                StringProp(default='arbiterd.log'),
+        'local_log':                StringProp(default='/var/log/shinken/arbiterd.log'),
         'log_file':                 UnusedProp(text=no_longer_used_txt),
         'object_cache_file':        UnusedProp(text=no_longer_used_txt),
         'precached_object_file':    UnusedProp(text='Shinken does not use precached_object_files. Skipping.'),
@@ -129,7 +132,7 @@ class Config(Item):
         'external_command_buffer_slots': UnusedProp(text='We do not limit the external command slot.'),
         'check_for_updates':        UnusedProp(text='network administrators will never allow such communication between server and the external world. Use your distribution packet manager to know if updates are available or go to the http://www.shinken-monitoring.org website instead.'),
         'bare_update_checks':       UnusedProp(text=None),
-        'lock_file':                StringProp(default='arbiterd.pid'),
+        'lock_file':                StringProp(default='/var/run/shinken/arbiterd.pid'),
         'retain_state_information': UnusedProp(text='sorry, retain state information will not be implemented because it is useless.'),
         'state_retention_file':     StringProp(default=''),
         'retention_update_interval': IntegerProp(default='60'),
@@ -173,7 +176,7 @@ class Config(Item):
         'enable_predictive_service_dependency_checks': StringProp(managed=False, default='1'),
         'cached_host_check_horizon': IntegerProp(default='0', class_inherit=[(Host, 'cached_check_horizon')]),
         'cached_service_check_horizon': IntegerProp(default='0', class_inherit=[(Service, 'cached_check_horizon')]),
-        'use_large_installation_tweaks': BoolProp(default='0', class_inherit=[(Host, None), (Service, None)]),
+        'use_large_installation_tweaks': UnusedProp(text='this option is deprecated because in shinken it is just an alias for enable_environment_macros=0'),
         'free_child_process_memory': UnusedProp(text='this option is automatic in Python processes'),
         'child_processes_fork_twice': UnusedProp(text='fork twice is not use.'),
         'enable_environment_macros': BoolProp(default='1', class_inherit=[(Host, None), (Service, None)]),
@@ -185,6 +188,7 @@ class Config(Item):
         'soft_state_dependencies':  BoolProp(managed=False, default='0'),
         'service_check_timeout':    IntegerProp(default='60', class_inherit=[(Service, 'check_timeout')]),
         'host_check_timeout':       IntegerProp(default='30', class_inherit=[(Host, 'check_timeout')]),
+        'timeout_exit_status':      IntegerProp(default='2'),
         'event_handler_timeout':    IntegerProp(default='30', class_inherit=[(Host, None), (Service, None)]),
         'notification_timeout':     IntegerProp(default='30', class_inherit=[(Host, None), (Service, None)]),
         'ocsp_timeout':             IntegerProp(default='15', class_inherit=[(Service, None)]),
@@ -236,6 +240,7 @@ class Config(Item):
         # SHINKEN SPECIFIC
         'idontcareaboutsecurity': BoolProp(default='0'),
         'daemon_enabled'        : BoolProp(default='1'), # Put to 0 to disable the arbiter to run
+        'daemon_thread_pool_size' : IntegerProp(default='8'),
         'flap_history': IntegerProp(default='20', class_inherit=[(Host, None), (Service, None)]),
         'max_plugins_output_length': IntegerProp(default='8192', class_inherit=[(Host, None), (Service, None)]),
         'no_event_handlers_during_downtimes': BoolProp(default='0', class_inherit=[(Host, None), (Service, None)]),
@@ -250,16 +255,16 @@ class Config(Item):
         'enable_problem_impacts_states_change': BoolProp(default='0', class_inherit=[(Host, None), (Service, None)]),
 
         # More a running value in fact
-        'resource_macros_names': StringProp(default=[]),
+        'resource_macros_names': ListProp(default=[]),
 
         # SSL PART
         # global boolean for know if we use ssl or not
         'use_ssl':               BoolProp(default='0', class_inherit=[(SchedulerLink, None), (ReactionnerLink, None),
                                                                 (BrokerLink, None), (PollerLink, None), \
                                                                 (ReceiverLink, None),  (ArbiterLink, None)]),
-        'certs_dir':             StringProp(default='etc/certs'),
         'ca_cert':               StringProp(default='etc/certs/ca.pem'),
-        'server_cert':           StringProp(default='etc/certs/server.pem'),
+        'server_cert':           StringProp(default='etc/certs/server.cert'),
+        'server_key':           StringProp(default='etc/certs/server.key'),
         'hard_ssl_name_check':   BoolProp(default='0'),
 
         # Log format
@@ -278,6 +283,9 @@ class Config(Item):
         'webui_lock_file':    StringProp(default='webui.pid'),
         'webui_port':    IntegerProp(default='8080'),
         'webui_host':    StringProp(default='0.0.0.0'),
+
+        # Large env tweacks
+        'use_multiprocesses_serializer':  BoolProp(default='0'),
 
     }
 
@@ -341,10 +349,22 @@ class Config(Item):
     # so from Nagios2 format, to Nagios3 ones
     old_properties = {
         'nagios_user':  'shinken_user',
-        'nagios_group': 'shinken_group'
+        'nagios_group': 'shinken_group',
+        'modulesdir': 'modules_dir',
     }
 
     read_config_silent = 0
+
+    early_created_types = ['arbiter', 'module']
+
+    configuration_types = ['void', 'timeperiod', 'command', 'contactgroup', 'hostgroup',
+                           'contact', 'notificationway', 'checkmodulation', 'macromodulation', 'host', 'service', 'servicegroup',
+                           'servicedependency', 'hostdependency', 'arbiter', 'scheduler',
+                           'reactionner', 'broker', 'receiver', 'poller', 'realm', 'module',
+                           'resultmodulation', 'escalation', 'serviceescalation', 'hostescalation',
+                           'discoveryrun', 'discoveryrule', 'businessimpactmodulation',
+                           'hostextinfo', 'serviceextinfo']
+
 
     def __init__(self):
         self.params = {}
@@ -422,9 +442,6 @@ class Config(Item):
 
             for line in buf:
                 line = line.decode('utf8', 'replace')
-                # Should not be useful anymore with the Universal open
-                # if os.name != 'nt':
-                #  line = line.replace("\r\n", "\n")
                 res.write(line)
                 if line.endswith('\n'):
                     line = line[:-1]
@@ -505,32 +522,29 @@ class Config(Item):
 
     def read_config_buf(self, buf):
         params = []
-        types = ['void', 'timeperiod', 'command', 'contactgroup', 'hostgroup',
-                 'contact', 'notificationway', 'checkmodulation', 'macromodulation', 'host', 'service', 'servicegroup',
-                 'servicedependency', 'hostdependency', 'arbiter', 'scheduler',
-                 'reactionner', 'broker', 'receiver', 'poller', 'realm', 'module',
-                 'resultmodulation', 'escalation', 'serviceescalation', 'hostescalation',
-                 'discoveryrun', 'discoveryrule', 'businessimpactmodulation',
-                 'hostextinfo', 'serviceextinfo']
         objectscfg = {}
+        types = self.__class__.configuration_types
         for t in types:
             objectscfg[t] = []
 
         tmp = []
         tmp_type = 'void'
         in_define = False
+        almost_in_define=False
         continuation_line = False
         tmp_line = ''
         lines = buf.split('\n')
+        line_nb = 0 # Keep the line number for the file path
         for line in lines:
             if line.startswith("# IMPORTEDFROM="):
                 filefrom = line.split('=')[1]
+                line_nb = 0 # reset the line number too
                 continue
-            # Protect \; to be considered as comments
-            line = line.replace('\;', '__ANTI-VIRG__')
-            line = line.split(';')[0].strip()
-            # Now we removed real comments, replace them with just ;
-            line = line.replace('__ANTI-VIRG__', ';')
+
+            line_nb += 1
+            # Remove comments
+            line = split_semicolon(line)[0].strip()
+
             # A backslash means, there is more to come
             if re.search("\\\s*$", line) is not None:
                 continuation_line = True
@@ -548,17 +562,27 @@ class Config(Item):
             if re.search("^\s*}\s*$", line) is not None:
                 in_define = False
 
+            # { alone in a line can mean start object reading
+            if re.search("^\s*{\s*$", line) is not None and almost_in_define:
+                almost_in_define=False
+                in_define = True
+                continue
+
             if re.search("^\s*#|^\s*$|^\s*}", line) is not None:
                 pass
             # A define must be catch and the type save
             # The old entry must be save before
             elif re.search("^define", line) is not None:
-                in_define = True
+                if re.search(".*{.*$", line) is not None:
+                    in_define = True
+                else:
+                    almost_in_define=True
+
                 if tmp_type not in objectscfg:
                     objectscfg[tmp_type] = []
                 objectscfg[tmp_type].append(tmp)
                 tmp = []
-                tmp.append("imported_from " + filefrom)
+                tmp.append("imported_from " + filefrom+':%d'%line_nb)
                 # Get new type
                 elts = re.split('\s', line)
                 # Maybe there was space before and after the type
@@ -575,6 +599,7 @@ class Config(Item):
         if not tmp_type in objectscfg:
             objectscfg[tmp_type] = []
 
+
         objectscfg[tmp_type].append(tmp)
         objects = {}
 
@@ -589,10 +614,13 @@ class Config(Item):
                 tmp = {}
                 for line in items:
                     elts = self._cut_line(line)
-                    if elts != []:
-                        prop = elts[0]
-                        value = ' '.join(elts[1:])
-                        tmp[prop] = value
+                    if elts == []:
+                        continue
+                    prop = elts[0]
+                    if not prop in tmp:
+                        tmp[prop] = []
+                    value = ' '.join(elts[1:])
+                    tmp[prop].append(value)
                 if tmp != {}:
                     objects[type].append(tmp)
 
@@ -609,13 +637,14 @@ class Config(Item):
         echo_obj = {'command_name': '_echo', 'command_line': '_echo'}
         raw_objects['command'].append(echo_obj)
 
+
     # We've got raw objects in string, now create real Instances
     def create_objects(self, raw_objects):
         """ Create real 'object' from dicts of prop/value """
         types_creations = self.__class__.types_creations
 
         # some types are already created in this time
-        early_created_types = ['arbiter', 'module']
+        early_created_types = self.__class__.early_created_types
 
         # Before really create the objects, we add
         # ghost ones like the bp_rule for correlation
@@ -625,6 +654,7 @@ class Config(Item):
             if t not in early_created_types:
                 self.create_objects_for_type(raw_objects, t)
 
+    
     def create_objects_for_type(self, raw_objects, type):
         types_creations = self.__class__.types_creations
         t = type
@@ -646,6 +676,7 @@ class Config(Item):
         # we create the objects Class and we set it in prop
         setattr(self, prop, clss(lst))
 
+    
     # Here arbiter and modules objects should be prepare and link
     # before all others types
     def early_arbiter_linking(self):
@@ -787,6 +818,10 @@ class Config(Item):
         # satellites
         self.realms.prepare_for_satellites_conf()
 
+    # Some elements are maybe set as wrong after a is_correct, so clean them 
+    # if possible
+    def clean(self):
+        self.services.clean()
 
     # In the scheduler we need to relink the commandCall with
     # the real commands
@@ -813,22 +848,110 @@ class Config(Item):
         # be changed into names
         self.hosts.prepare_for_sending()
         self.hostgroups.prepare_for_sending()
-        
+        t1 = time.time()
         logger.info('[Arbiter] Serializing the configurations...')
-        for r in self.realms:
-            for (i, conf) in r.confs.iteritems():
-                # Remember to protect the local conf hostgroups too!
-                conf.hostgroups.prepare_for_sending()
-                logger.debug('[%s] Serializing the configuration %d' % (r.get_name(), i))
-                t0 = time.time()
-                r.serialized_confs[i] = cPickle.dumps(conf, cPickle.HIGHEST_PROTOCOL)
-                logger.debug("[config] time to serialize the conf %s:%s is %s" % (r.get_name(), i, time.time() - t0))
-        # Now pickle the whole conf, for easy and quick spare send
-        t0 = time.time()
-        whole_conf_pack = cPickle.dumps(self, cPickle.HIGHEST_PROTOCOL)
-        logger.debug("[config] time to serialize the global conf : %s" % (time.time() - t0))
-        self.whole_conf_pack = whole_conf_pack
-        
+
+
+        # There are two ways of configuration serializing
+        # One if to use the serial way, the other is with use_multiprocesses_serializer
+        # to call to sub-wrokers to do the job.
+        # TODO : enable on windows? I'm not sure it will work, must give a test
+        if os.name == 'nt' or not self.use_multiprocesses_serializer:
+            logger.info('Using the default serialization pass')
+            for r in self.realms:
+                for (i, conf) in r.confs.iteritems():
+                    # Remember to protect the local conf hostgroups too!
+                    conf.hostgroups.prepare_for_sending()
+                    logger.debug('[%s] Serializing the configuration %d' % (r.get_name(), i))
+                    t0 = time.time()
+                    r.serialized_confs[i] = cPickle.dumps(conf, cPickle.HIGHEST_PROTOCOL)
+                    logger.debug("[config] time to serialize the conf %s:%s is %s" % (r.get_name(), i, time.time() - t0))
+                    logger.debug("PICKLE LEN : %d" % len(r.serialized_confs[i]))
+            # Now pickle the whole conf, for easy and quick spare send
+            t0 = time.time()
+            whole_conf_pack = cPickle.dumps(self, cPickle.HIGHEST_PROTOCOL)
+            logger.debug("[config] time to serialize the global conf : %s" % (time.time() - t0))
+            self.whole_conf_pack = whole_conf_pack
+            print "TOTAL serializing in", time.time() - t1
+
+        else:
+            logger.info('Using the multiprocessing serialization pass')
+            t1 = time.time()
+
+            # We ask a manager to manage the communication with our children
+            m = Manager()
+            # The list will got all the strings from the children
+            q = m.list()
+            for r in self.realms:
+                processes = []
+                for (i, conf) in r.confs.iteritems():
+                    # This function will be called by the children, and will give
+                    # us the pickle result
+                    def Serialize_config(q, rname, i, conf):
+                        # Remember to protect the local conf hostgroups too!
+                        conf.hostgroups.prepare_for_sending()
+                        logger.debug('[%s] Serializing the configuration %d' % (rname, i))
+                        t0 = time.time()
+                        res = cPickle.dumps(conf, cPickle.HIGHEST_PROTOCOL)
+                        logger.debug("[config] time to serialize the conf %s:%s is %s" % (rname, i, time.time() - t0))
+                        q.append((i, res))
+
+                    # Prepare a sub-process that will manage the pickle computation
+                    p = Process(target=Serialize_config, name="serializer-%s-%d" %(r.get_name(), i) , args=(q, r.get_name(), i, conf))
+                    p.start()
+                    processes.append( (i, p) )
+
+                # Here all sub-processes are launched for this realm, now wait for them to finish
+                while len(processes) != 0:
+                    to_del = []
+                    for (i, p) in processes:
+                        if p.exitcode is not None:
+                            to_del.append((i, p))
+                            # remember to join() so the children can die
+                            p.join()
+                    for (i, p) in to_del:
+                        logger.debug("The sub process %s is done with the return code %d" % (p.name, p.exitcode))
+                        processes.remove( (i, p ) )
+                    # Don't be too quick to poll!
+                    time.sleep(0.1)
+
+                # Check if we got the good number of configuration, maybe one of the cildren got problems?
+                if len(q) != len(r.confs):
+                    logger.error("Something goes wrong in the configuration serializations, please restart Shinken Arbiter")
+                    sys.exit(2)
+                # Now get the serialized configuration and saved them into self
+                for (i, cfg) in q:
+                    r.serialized_confs[i] = cfg
+            print "TOTAL TIME", time.time() - t1
+
+            # Now pickle the whole configuration into one big pickle object, for the arbiter spares
+            whole_queue = m.list()
+            t0 = time.time()
+            # The function that just compute the whole conf pickle string, but n a children
+            def create_whole_conf_pack(whole_queue, self):
+                logger.debug("[config] sub processing the whole configuration pack creation")
+                whole_queue.append(cPickle.dumps(self, cPickle.HIGHEST_PROTOCOL))
+                logger.debug("[config] sub processing the whole configuration pack creation finished")
+            # Go for it
+            p = Process(target=create_whole_conf_pack, args=(whole_queue, self), name='serializer-whole-configuration')
+            p.start()
+            # Wait for it to die
+            while p.exitcode is None:
+                time.sleep(0.1)
+            p.join()
+            # Maybe we don't have our result?
+            if len(whole_queue) != 1:
+                logger.error("Something goes wrong in the whole configuration pack creation, please restart Shinken Arbiter")
+                sys.exit(2)
+
+            #Get it and save it
+            self.whole_conf_pack = whole_queue.pop()
+            logger.debug("[config] time to serialize the global conf : %s" % (time.time() - t0))
+
+            print "TOTAL serializing iin", time.time() - t2
+            # Shutdown the manager, the sub-process should be gone now
+            m.shutdown()
+
 
     def dump(self):
         print "Slots", Service.__slots__
@@ -876,6 +999,10 @@ class Config(Item):
                 logger.info(s)
 
             logger.warning("Unmanaged configuration statement, do you really need it? Ask for it on the developer mailinglist %s or submit a pull request on the Shinken github " % mailing_list_uri)
+
+    # Overrides specific instances properties
+    def override_properties(self):
+        self.services.override_properties(self.hosts)
 
     # Use to fill groups values on hosts and create new services
     # (for host group ones)
@@ -1345,6 +1472,7 @@ class Config(Item):
                   'hostsextinfo', 'servicesextinfo', 'checkmodulations', 'macromodulations'):
             if self.read_config_silent == 0:
                 logger.info('Checking %s...' % (x))
+
             cur = getattr(self, x)
             if not cur.is_correct():
                 r = False
@@ -1400,11 +1528,11 @@ class Config(Item):
                 self.add_error("Error: hosts exist with poller_tag %s but no poller got this tag" % tag)
                 r = False
         if not services_tag.issubset(pollers_tag):
-            for tag in services_tag.difference(pollers_tag):        
+            for tag in services_tag.difference(pollers_tag):
                 logger.error("Services exist with poller_tag %s but no poller got this tag" % tag)
                 self.add_error("Error: services exist with poller_tag %s but no poller got this tag" % tag)
                 r = False
-    
+
 
         # Check that all hosts involved in business_rules are from the same realm
         for l in [self.services, self.hosts]:
@@ -1419,6 +1547,7 @@ class Config(Item):
                             r = False
 
         self.conf_is_correct = r
+
 
     # We've got strings (like 1) but we want python elements, like True
     def pythonize(self):
@@ -1632,7 +1761,7 @@ class Config(Item):
                                 % (r.get_name(), nb_elements, len(r.packs)))
 
             if nb_schedulers == 0 and nb_elements != 0:
-                err = "The realm %s have hosts but no scheduler!" % r.get_name()
+                err = "The realm %s has hosts but no scheduler!" % r.get_name()
                 self.add_error(err)
                 r.packs = []  # Dumb pack
                 continue

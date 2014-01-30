@@ -51,7 +51,7 @@ test_dispatcher.py
 test_reactionner_tag_get_notif.py
 test_module_pickle_retention_broker.py
 test_module_pickle_retention_arbiter.py
-test_module_nagios_retention.py
+test_module_shinken_retention.py
 test_discovery_def.py
 test_hostgroup_no_host.py
 test_nocontacts.py
@@ -119,6 +119,10 @@ test_modules_nrpe_poller.py
 test_checkmodulations.py
 test_macromodulations.py
 test_module_file_tag.py
+test_antivirg.py
+test_business_correlator_expand_expression.py
+test_multi_attribute.py
+test_property_override.py
 
 
 # takes long

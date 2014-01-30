@@ -31,7 +31,7 @@ Shinken.
 
 import sys
 
-VERSION = "1.4"
+VERSION = "2.0-BETA1"
 
 
 # Make sure people are using Python 2.4 or higher
@@ -40,7 +40,3 @@ if sys.version_info < (2, 4):
 elif sys.version_info >= (3,):
     sys.exit("Shinken is not yet compatible with Python 3.x, sorry")
 
-try:
-    import shinken.pyro_wrapper
-except ImportError:
-    sys.exit("Shinken requires the Python Pyro module. Please install it.")
