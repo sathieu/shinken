@@ -8,6 +8,7 @@ shinken (2.0~git20140129-1) UNRELEASED; urgency=medium
 
   [ Mathieu Parent ]
   * New upstream major version
+    - 10_webui.patch removed
 
  -- Mathieu Parent <sathieu@debian.org>  Thu, 30 Jan 2014 11:07:16 +0100
 
