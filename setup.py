@@ -196,6 +196,7 @@ class build_config(Command):
         if not is_update:
             # The default file must have good values for the directories:
             # etc, var and where to push scripts that launch the app.
+            self.generate_shinken_file("bin/init.d/shinken.in", os.path.join(self.build_base, "bin/init.d/shinken"))
             self.generate_shinken_file("bin/default/shinken.in", os.path.join(self.build_base, "bin/default/shinken"))
             self.update_configfiles()
             self.copy_objects_file()
@@ -560,11 +561,11 @@ webui_files = [s.replace('shinken/webui/', 'webui/') for s in full_path_webui_fi
 package_data = ['*.py', 'modules/*.py', 'modules/*/*.py']
 package_data.extend(webui_files)
 
-#By default we add all init.d scripts and some dummy files
+#By default we add all init.d scripts except the main one
 data_files = [
     (
         os.path.join('/etc', 'init.d'),
-        ['bin/init.d/shinken',
+        [
          'bin/init.d/shinken-arbiter',
          'bin/init.d/shinken-broker',
          'bin/init.d/shinken-receiver',
@@ -581,7 +582,10 @@ if not is_update:
 
     data_files.append(
         (os.path.join(etc_root, 'default',),
-         ['build/bin/default/shinken']
+         [
+          'build/bin/init.d/shinken',
+          'build/bin/default/shinken',
+         ]
          ))
     
     # Also add modules to the var directory
